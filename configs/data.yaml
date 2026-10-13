@@ -1,0 +1,10 @@
+path: /content/drive/MyDrive/DoAn/data/processed
+train: images/train
+val: images/val
+test: images/test
+
+nc: 3
+names:
+0: Vehicle
+1: Pedestrian
+2: Traffic Light
