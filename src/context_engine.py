@@ -79,7 +79,7 @@ class TrafficContextEngine:
                 context_data["warnings"].append(f"NGUY HIEM: Nguoi di bo tren duong (ID: {obj['id']})")
             elif obj['class'] == 'Vehicle' and risk_level == "Cao":
                 ttc_str = f"{ttc:.1f}s" if ttc != float('inf') else "Khong xac dinh"
-                context_data["warnings"].append(f"CANH BAO: Xe truoc qua gan (ID: {obj['id']}, TTC: {ttc:.1f}s)")
+                context_data["warnings"].append(f"CANH BAO: Xe truoc qua gan (ID: {obj['id']}, TTC: {ttc_str})")
 
             context_data["objects"].append({
                 "id": obj['id'],
