@@ -2,7 +2,7 @@ import streamlit as st
 import tempfile
 import cv2
 import json
-from context_engine import TrafficContextEngine
+from pipeline import DrivingPerceptionPipeline
 
 st.set_page_config(page_title="Traffic Context Representation", layout="wide")
 st.title("🚗 Hệ Thống Nhận Diện & Biểu Diễn Ngữ Cảnh Giao Thông")
@@ -29,7 +29,8 @@ if uploaded_file is not None:
     
     start_btn = st.sidebar.button("Bắt đầu phân tích")
     if start_btn:
-        engine = TrafficContextEngine()
+        # Khởi tạo Pipeline (sau này truyền weights vào: DrivingPerceptionPipeline(yolo_weights="...", segformer_weights="..."))
+        pipeline = DrivingPerceptionPipeline(fps=30)
         frame_idx = 0
         
         while cap.isOpened():
@@ -39,27 +40,15 @@ if uploaded_file is not None:
             
             frame = cv2.resize(frame, (640, 384))
             
-            # Dữ liệu giả lập mẫu để kiểm thử logic trước khi nạp model hoàn chỉnh
-            sample_detections = [
-                {"id": 1, "class": "Vehicle", "bbox": [260, 200, 380, 310]}
-            ]
-            
-            # Suy luận ngữ cảnh
-            context_log = engine.process_frame(
-                detections=sample_detections,
-                masks={},
-                weather_label=weather_condition,
+            # Chạy toàn bộ luồng qua pipeline
+            annotated_frame, context_log = pipeline.run_inference(
+                frame=frame,
                 frame_idx=frame_idx,
-                frame_shape=frame.shape[:2]
+                weather=weather_condition
             )
             
-            # Hiển thị cảnh báo lên frame
-            y_offset = 30
-            for warn in context_log["warnings"]:
-                cv2.putText(frame, warn, (15, y_offset), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-                y_offset += 25
-                
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            # Hiển thị kết quả lên giao diện web
+            frame_rgb = cv2.cvtColor(annotated_frame, cv2.COLOR_BGR2RGB)
             video_placeholder.image(frame_rgb, channels="RGB", use_container_width=True)
             json_placeholder.code(json.dumps(context_log, indent=2, ensure_ascii=False), language="json")
             
