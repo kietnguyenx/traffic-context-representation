@@ -1,0 +1,13 @@
+version: '3.8'
+
+services:
+  traffic-context-frontend:
+    build: .
+    ports:
+      - "8501:8501"
+    container_name: traffic_adas_container
+    volumes:
+      - .:/app
+    restart: unless-stopped
+    environment:
+      - PYTHONUNBUFFERED=1
