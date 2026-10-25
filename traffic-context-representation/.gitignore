@@ -1,0 +1,23 @@
+# Dataset & Heavy Files
+dataset_raw/
+dataset_processed/
+data/
+*.zip
+*.tar
+*.gz
+
+# Model Weights & Logs
+*.pt
+*.pth
+*.onnx
+weights/
+runs/
+logs/
+*.cache
+
+# Python & Checkpoints
+__pycache__/
+*.py[cod]
+.ipynb_checkpoints/
+.venv/
+venv/

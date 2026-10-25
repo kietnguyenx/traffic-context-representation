@@ -1,0 +1,10 @@
+path: /content/dataset_processed
+train: images/train
+val: images/val
+test: images/val
+
+nc: 3
+names:
+  0: Vehicle
+  1: Pedestrian
+  2: Traffic Light
