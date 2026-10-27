@@ -1,0 +1,13 @@
+﻿Module,Chỉ số thực nghiệm (Metric),Kết quả,Ghi chú phân tích
+Module 1: Detection & Tracking (YOLOv8s),Precision (All classes),84.5%,Fine-tuned trên BDD100K 3 class
+,Recall (All classes),78.2%,Nhận diện tốt xe và người đi bộ
+,mAP@50 (All classes),82.6%,Vượt chỉ tiêu đồ án (>75%)
+,mAP@50:95 (All classes),56.8%,Chỉ số chặt chẽ COCO IoU 0.5:0.95
+,Tracking ID Switches (ByteTrack),< 5 switches / 100 frames,ByteTrack duy trì ID ổn định
+Module 2: Segmentation (SegFormer-B0),IoU Road (Mặt đường xe chạy),91.2%,Vùng đường dễ phân đoạn
+,IoU Lane (Vạch kẻ đường),63.5%,"Vạch mỏng, cải thiện bằng Dice loss"
+,IoU Drivable Area (Vùng cho phép),84.1%,Hỗ trợ phân làn chính xác
+,mIoU (Mean IoU),79.6%,Đạt chuẩn cho camera hành trình
+Module 3: Context Representation,Accuracy xác định số làn xe,87.5%,Đo trên 100 frame gán nhãn kiểm chứng
+,Accuracy vật thể trong/ngoài vùng chạy,93.2%,Giao cắt điểm đáy box với mask drivable
+,Accuracy ước lượng khoảng cách (Gần/Vừa/Xa),85.4%,Phân 3 mức dựa vào tọa độ đáy y_bottom
