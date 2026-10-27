@@ -21,3 +21,7 @@ __pycache__/
 .ipynb_checkpoints/
 .venv/
 venv/
+
+# Local Test Videos & Tracking Outputs
+ket_qua_tracking/
+test_data/
