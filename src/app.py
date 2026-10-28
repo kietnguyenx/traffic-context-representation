@@ -622,7 +622,11 @@ def render_telemetry_bar(speed="--", gap="--", ttc="--", risk="STANDBY"):
 # 5. XỬ LÝ TRẠNG THÁI HIỂN THỊ TRUNG TÂM (ĐÃ XÓA DEMO MẶC ĐỊNH)
 # -------------------------------------------------------------
 # Tu dong chon trong so YOLO tot nhat (uu tien yolo_best_10k.pt)
-yolo_w = 'src/weights/yolo_best_10k.pt'
+yolo_w = 'src/weights/yolo_best_v2.pt'
+if not os.path.exists(yolo_w):
+    yolo_w = 'src/weights/yolo_best_10k.pt'
+if not os.path.exists(yolo_w):
+    yolo_w = 'src/weights/yolo_best.pt'
 if not os.path.exists(yolo_w):
     yolo_w = 'src/weights/yolov8_best.pt'
 if not os.path.exists(yolo_w):
