@@ -462,7 +462,19 @@ with col_controls:
         """, unsafe_allow_html=True)
 
     # Tùy chọn chạy video mẫu (nếu người dùng muốn thử nghiệm nhanh khi chưa có video)
-    use_sample = st.checkbox("Sử dụng video mẫu (Sample 1080p)", value=False)
+    use_sample = st.checkbox("Sử dụng video mẫu (Sample có sẵn)", value=False)
+    sample_choice = None
+    if use_sample:
+        sample_choice = st.selectbox(
+            "Chọn video mẫu:",
+            [
+                "Video BDD100K thực tế dài (54 giây)",
+                "Video giao thông phố đông (30 giây)",
+                "Video cao tốc (10 giây)",
+                "Kịch bản mô phỏng HUD (3 giây)"
+            ],
+            index=0
+        )
 
     # Dropdown chọn tập dữ liệu
     st.markdown('<div class="control-label">Dataset Selector</div>', unsafe_allow_html=True)
@@ -740,7 +752,89 @@ else:
 
     # Trường hợp 2: Người dùng tích chọn 'Sử dụng video mẫu'
     elif use_sample:
-        scenario_data = get_demo_scenario_data(num_frames=90, target_w=960, target_h=540)
+        sample_map = {
+            "Video BDD100K thực tế dài (54 giây)": "test_data/raw_videos/sample.mp4",
+            "Video giao thông phố đông (30 giây)": "test_data/raw_videos/dashcam_real_traffic.mp4",
+            "Video cao tốc (10 giây)": "test_data/raw_videos/sample_10s.mp4",
+        }
+        chosen_video_path = sample_map.get(sample_choice)
+
+        if chosen_video_path and os.path.exists(chosen_video_path):
+            cap = cv2.VideoCapture(chosen_video_path)
+            ret, first_frame = cap.read()
+            cap.release()
+
+            if ret and first_frame is not None and not start_btn:
+                preview_resized = cv2.resize(first_frame, (960, 540))
+                video_placeholder.image(cv2.cvtColor(preview_resized, cv2.COLOR_BGR2RGB), use_container_width=True)
+                render_hud_cards(
+                    ego_lane="Lane 2 (Center)",
+                    lead_dist="READY",
+                    lead_alert=sample_choice,
+                    signal="READY",
+                    ped_hazard="Ready to scan",
+                    is_amber=False
+                )
+                render_terminal_json({
+                    "status": "VIDEO_LOADED",
+                    "mode": sample_choice,
+                    "model": "yolo_best_10k.pt",
+                    "action": "Click 'Start Analysis' to run full video"
+                })
+                render_telemetry_bar(speed=0, gap="--", ttc="--", risk="READY")
+
+            if start_btn:
+                pipeline.reset()
+                cap = cv2.VideoCapture(chosen_video_path)
+                frames_source = []
+                while cap.isOpened():
+                    r, f = cap.read()
+                    if not r:
+                        break
+                    frames_source.append(f)
+                cap.release()
+
+                total_frames = len(frames_source)
+                for idx, f in enumerate(frames_source):
+                    resized = cv2.resize(f, (960, 540))
+                    annotated, log = pipeline.run_inference(
+                        frame=resized,
+                        frame_idx=idx,
+                        weather="Nang rao",
+                        show_masks=toggle_drivable,
+                        show_lanes=toggle_lanes,
+                        show_boxes=toggle_boxes,
+                        show_graph=toggle_graph
+                    )
+
+                    video_placeholder.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
+                    progress_placeholder.progress((idx + 1) / total_frames, text=f"Analyzing Frame {idx + 1}/{total_frames} (yolo_best_10k.pt • 30 FPS)")
+
+                    summary = log.get("summary", {})
+                    risk_lvl = summary.get("risk_level", "An toan")
+                    is_amber = (risk_lvl in ["Chu y", "Nguy hiem"])
+
+                    render_hud_cards(
+                        ego_lane="Lane 2 (Center)",
+                        lead_dist="NEAR" if is_amber else "NORMAL",
+                        lead_alert="Caution in amber" if is_amber else "Safe",
+                        signal="RED (Ahead)" if summary.get("traffic_light_ahead") else "CLEAR",
+                        ped_hazard=f"{summary.get('pedestrians_on_road', 0)} on Road (Alert)" if summary.get('pedestrians_on_road', 0) > 0 else "None",
+                        is_amber=is_amber
+                    )
+                    render_terminal_json(log)
+                    render_telemetry_bar(
+                        speed=42,
+                        gap=12.5 if is_amber else 22.0,
+                        ttc=1.4 if is_amber else 3.5,
+                        risk="CAUTION" if is_amber else "SAFE"
+                    )
+                    time.sleep(0.01)
+
+                progress_placeholder.empty()
+                st.toast("🎉 Phân tích video hoàn tất!", icon="✅")
+        else:
+            scenario_data = get_demo_scenario_data(num_frames=90, target_w=960, target_h=540)
         
         if not start_btn:
             # Hiển thị preview frame 0 của sample
