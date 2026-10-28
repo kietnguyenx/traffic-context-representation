@@ -22,7 +22,8 @@ if sys.platform.startswith('win'):
 
 def main():
     parser = argparse.ArgumentParser(description="Chạy thử nghiệm ByteTrack trên Video mẫu")
-    parser.add_argument("--weights", type=str, default="src/weights/yolov8_best.pt", help="Trọng số YOLO")
+    default_w = "src/weights/yolo_best_10k.pt" if os.path.exists("src/weights/yolo_best_10k.pt") else "src/weights/yolov8_best.pt"
+    parser.add_argument("--weights", type=str, default=default_w, help="Trọng số YOLO")
     parser.add_argument("--source", type=str, default="src/assets/demo_adas_cockpit.mp4", help="Video đầu vào")
     parser.add_argument("--output", type=str, default="src/assets/demo_tracked_bytetrack.mp4", help="Video kết quả")
     parser.add_argument("--conf", type=float, default=0.25, help="Ngưỡng confidence")

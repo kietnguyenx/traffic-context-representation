@@ -603,7 +603,15 @@ def render_telemetry_bar(speed="--", gap="--", ttc="--", risk="STANDBY"):
 # -------------------------------------------------------------
 # 5. XỬ LÝ TRẠNG THÁI HIỂN THỊ TRUNG TÂM (ĐÃ XÓA DEMO MẶC ĐỊNH)
 # -------------------------------------------------------------
-pipeline = DrivingPerceptionPipeline(fps=30)
+# Tu dong chon trong so YOLO tot nhat (uu tien yolo_best_10k.pt)
+yolo_w = 'src/weights/yolo_best_10k.pt'
+if not os.path.exists(yolo_w):
+    yolo_w = 'src/weights/yolov8_best.pt'
+if not os.path.exists(yolo_w):
+    yolo_w = 'src/yolov8n.pt'
+if not os.path.exists(yolo_w):
+    yolo_w = 'yolov8n.pt'
+pipeline = DrivingPerceptionPipeline(yolo_weights=yolo_w, fps=30)
 
 # KHI CHƯA CÓ VIDEO TẢI LÊN VÀ KHÔNG CHỌN SAMPLE:
 if uploaded_file is None and not use_sample:
