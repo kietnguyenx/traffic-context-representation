@@ -25,3 +25,5 @@ venv/
 # Local Test Videos & Tracking Outputs
 ket_qua_tracking/
 test_data/
+ket_qua_test.jpg
+yolov8n.pt
