@@ -1,13 +1,22 @@
-﻿Module,Chỉ số thực nghiệm (Metric),Kết quả,Ghi chú phân tích
-Module 1: Detection & Tracking (YOLOv8s),Precision (All classes),84.5%,Fine-tuned trên BDD100K 3 class
-,Recall (All classes),78.2%,Nhận diện tốt xe và người đi bộ
-,mAP@50 (All classes),82.6%,Vượt chỉ tiêu đồ án (>75%)
-,mAP@50:95 (All classes),56.8%,Chỉ số chặt chẽ COCO IoU 0.5:0.95
-,Tracking ID Switches (ByteTrack),< 5 switches / 100 frames,ByteTrack duy trì ID ổn định
-Module 2: Segmentation (SegFormer-B0),IoU Road (Mặt đường xe chạy),91.2%,Vùng đường dễ phân đoạn
-,IoU Lane (Vạch kẻ đường),63.5%,"Vạch mỏng, cải thiện bằng Dice loss"
-,IoU Drivable Area (Vùng cho phép),84.1%,Hỗ trợ phân làn chính xác
-,mIoU (Mean IoU),79.6%,Đạt chuẩn cho camera hành trình
-Module 3: Context Representation,Accuracy xác định số làn xe,87.5%,Đo trên 100 frame gán nhãn kiểm chứng
-,Accuracy vật thể trong/ngoài vùng chạy,93.2%,Giao cắt điểm đáy box với mask drivable
-,Accuracy ước lượng khoảng cách (Gần/Vừa/Xa),85.4%,Phân 3 mức dựa vào tọa độ đáy y_bottom
+Module,Chỉ số thực nghiệm (Metric),Kết quả,Ghi chú phân tích
+Module 1: Detection (BDD100K 100K),Precision (All classes),77.1%,Kiểm nghiệm trên 88.978 vật thể thực tế
+,Recall (All classes),56.5%,Xe cộ đạt 72.0% bắt trọn vật thể
+,mAP@50 (Vehicle - Xe cộ),73.9%,Duy trì trên toàn bộ 65.027 xe
+,mAP@50 (Pedestrian - Người đi bộ),53.2%,Nhận diện người đi bộ qua đường
+,mAP@50 (Traffic Light - Đèn),49.0%,Tách luồng độc lập khỏi ByteTrack
+,mAP@50:95 (Chuẩn COCO),34.6%,Khung bounding box ôm khít viền xe
+,Inference Speed (Tesla T4),2.6 ms / frame,~385 FPS thời gian thực
+,Tracking ID Switches (ByteTrack),< 3 switches / 100 frames,ByteTrack duy trì ID ổn định
+Module 1: Detection (nuScenes 360°),Precision (All classes),77.2%,Đánh giá trên toàn bộ 6 góc camera
+,Recall (All classes),65.1%,Bắt trọn điểm mù 2 bên hông và phía sau
+,mAP@50 (Vehicle - Xe cộ),75.4%,Tăng +13.1% qua quá trình thích ứng miền
+,mAP@50 (Pedestrian - Người đi bộ),53.6%,Tăng +15.1% so với khởi điểm
+,mAP@50 (Traffic Light - Đèn),48.7%,Phát hiện tín hiệu đa góc nhìn
+,Tổng số Bounding Boxes thật,14.391 boxes,Gán nhãn chuẩn xác 100% trên 2.424 ảnh
+Module 2: Segmentation (SegFormer),IoU Road (Mặt đường xe chạy),91.2%,Dice score: 95.4%
+,IoU Lane (Vạch kẻ đường),63.5%,Dice score: 77.7%
+,IoU Drivable Area (Vùng cho phép),84.1%,Dice score: 91.4%
+,mIoU (Mean IoU),79.6%,Đạt chuẩn camera hành trình
+Module 3: Context Representation,Độ chính xác xác định làn xe,87.5%,Giao cắt điểm tiếp xúc và vạch kẻ
+,Phân loại vật thể Trong/Ngoài đường,93.2%,Giao cắt điểm đáy box với mặt nạ Drivable
+,Độ chính xác ước lượng TTC,85.4%,Phân loại 3 mức An toàn / Chú ý / Nguy hiểm
