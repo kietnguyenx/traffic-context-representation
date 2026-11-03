@@ -1316,6 +1316,8 @@ if mode_display == "🎬 Phát Video Kết Quả Mượt (30 FPS • Khuyên Dù
 
     video_candidates = [
 
+        os.path.join(current_dir, "assets", "demo_adas_cockpit.mp4"),
+        os.path.join(project_root, "src", "assets", "demo_adas_cockpit.mp4"),
         os.path.join(current_dir, "assets", "demo_tracked_10k.mp4"),
 
         os.path.join(project_root, "src", "assets", "demo_tracked_10k.mp4"),
