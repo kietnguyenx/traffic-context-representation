@@ -1,6 +1,22 @@
 # BẢNG TỔNG HỢP SỐ LIỆU THỰC NGHIỆM ĐỒ ÁN (CHÍNH THỨC CÁN MỐC 100.000 ẢNH)
 
-## 1. Bảng số liệu chi tiết các Module trong hệ thống
+## 1. Bảng tổng hợp mức độ tăng trưởng Object Detection (YOLOv8s - Thành viên 1)
+
+*(Bảng so sánh theo chuẩn thực nghiệm 3 mốc dữ liệu BDD100K: 5k cũ -> 50k -> 100k mẫu)*
+
+| Chỉ số (val 2.000 ảnh) | Bản 5k (mốc cũ) | Bản 50k | Thay đổi | Bản 100k mẫu | Thay đổi |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **mAP@50** | 0.518 | 0.565 | +0.047 | **0.587** | +0.022 |
+| **mAP@50-95** | 0.275 | 0.324 | +0.049 | **0.346** | +0.022 |
+| **Precision** | 0.641 | 0.738 | +0.097 | **0.771** | +0.033 |
+| **Recall** | 0.508 | 0.548 | +0.040 | **0.565** | +0.017 |
+| **mAP@50 Vehicle** | 0.685 | 0.726 | +0.041 | **0.739** | +0.013 |
+| **mAP@50 Pedestrian** | 0.451 | 0.514 | +0.063 | **0.532** | +0.018 |
+| **mAP@50 Traffic Light** | 0.420 | 0.472 | +0.052 | **0.490** | +0.018 |
+
+---
+
+## 2. Bảng số liệu chi tiết các Module trong hệ thống
 
 | Module | Chỉ số thực nghiệm (Metric) | Kết quả (Mốc 100K) | Ghi chú phân tích |
 | :--- | :--- | :---: | :--- |
@@ -22,7 +38,7 @@
 
 ---
 
-## 2. Bảng so sánh đối chuẩn Đa tập dữ liệu (BDD100K vs. nuScenes - Mốc 100K)
+## 3. Bảng so sánh đối chuẩn Đa tập dữ liệu (BDD100K vs. nuScenes - Mốc 100K)
 *(Theo đúng yêu cầu tại Mục II của Đề cương: Đánh giá trên cả BDD100K và nuScenes, ghi chú N/A cho nhãn không áp dụng)*
 
 | Hạng mục đánh giá | Tập dữ liệu BDD100K (Tập chính 100K) | Tập dữ liệu nuScenes (Tập kiểm chứng 5K) | Ghi chú học thuật |
@@ -43,7 +59,7 @@
 
 
 
-## 3. Bảng mức độ tăng trưởng cụ thể qua các đợt huấn luyện nuScenes (360° 6 Camera)
+## 4. Bảng mức độ tăng trưởng cụ thể qua các đợt huấn luyện nuScenes (360° 6 Camera)
 
 *(Thích ứng miền Domain Adaptation từ mô hình gốc BDD100K sang bộ dữ liệu nuScenes đa góc nhìn với 14.391 nhãn thật)*
 
@@ -57,7 +73,7 @@
 
 ---
 
-## 4. Bảng đối chuẩn 2 Lần Huấn luyện Mở rộng nuScenes (Đánh giá mức độ tăng trưởng %)
+## 5. Bảng đối chuẩn 2 Lần Huấn luyện Mở rộng nuScenes (Đánh giá mức độ tăng trưởng %)
 
 
 

@@ -26,6 +26,20 @@ Thành viên 1 đã hoàn thành xuất sắc 100% các mục tiêu trong toàn 
 
 ## 2. BẢNG SỐ LIỆU ĐỘ ĐO THỰC NGHIỆM CHI TIẾT (CHƯƠNG 4 BÁO CÁO)
 
+### 2.0. Bảng tổng hợp mức độ tăng trưởng Object Detection qua các mốc dữ liệu BDD100K
+
+| Chỉ số (val 2.000 ảnh) | Bản 5k (mốc cũ) | Bản 50k | Thay đổi | Bản 100k mẫu | Thay đổi |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **mAP@50** | 0.518 | 0.565 | +0.047 | **0.587** | +0.022 |
+| **mAP@50-95** | 0.275 | 0.324 | +0.049 | **0.346** | +0.022 |
+| **Precision** | 0.641 | 0.738 | +0.097 | **0.771** | +0.033 |
+| **Recall** | 0.508 | 0.548 | +0.040 | **0.565** | +0.017 |
+| **mAP@50 Vehicle** | 0.685 | 0.726 | +0.041 | **0.739** | +0.013 |
+| **mAP@50 Pedestrian** | 0.451 | 0.514 | +0.063 | **0.532** | +0.018 |
+| **mAP@50 Traffic Light** | 0.420 | 0.472 | +0.052 | **0.490** | +0.018 |
+
+---
+
 ### 2.1. Đánh giá chi tiết mô hình YOLOv8s trên tập BDD100K (Quy mô 100K ảnh - 88.978 vật thể kiểm nghiệm)
 
 | Lớp đối tượng (Class) | Số lượng vật thể (Instances) | Độ chính xác (Precision) | Độ thu hồi (Recall) | mAP@50 (IoU = 0.5) | mAP@50-95 (Chuẩn COCO) |
