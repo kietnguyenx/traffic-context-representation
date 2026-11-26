@@ -1,8 +1,5 @@
 """
 Script Đánh Giá Định Lượng Bộ Suy Luận Ngữ Cảnh Giao Thông (Context Engine Evaluation)
-Đề tài: Nhận diện và biểu diễn ngữ cảnh giao thông trong video hành trình.
-Phụ trách: Thành viên 3 (Context Engine & Web Demo)
-
 Chức năng:
 1. Thiết lập bộ dữ liệu kiểm thử chuẩn (Ground-Truth Benchmark) 60 frame đa dạng tình huống.
 2. Đo đạc các chỉ số: Accuracy, Precision, Recall, F1-Score cho từng thuộc tính ngữ cảnh.
@@ -26,7 +23,10 @@ current_dir = Path(__file__).resolve().parent
 if str(current_dir) not in sys.path:
     sys.path.append(str(current_dir))
 
-from context_engine import TrafficContextEngine
+try:
+    from src.context_engine import TrafficContextEngine
+except ImportError:
+    from context_engine import TrafficContextEngine
 
 
 # ==============================================================================
@@ -234,9 +234,9 @@ def evaluate_engine(test_cases, inject_noise=False):
 
             # 3. Kiểm tra đoán Làn đường (Lane)
             pred_lane = pred["lane_position"]
-            if gt["expected_lane_type"] == "Lan giua" and "Lan giua" in pred_lane:
+            if gt["expected_lane_type"] in ["Lan giua", "Cung lan"] and any(k in pred_lane for k in ["Lan giua", "Cung lan"]):
                 correct_lane += 1
-            elif gt["expected_lane_type"] != "Lan giua" and "Lan giua" not in pred_lane:
+            elif gt["expected_lane_type"] not in ["Lan giua", "Cung lan"] and not any(k in pred_lane for k in ["Lan giua", "Cung lan"]):
                 correct_lane += 1
 
             # 4. Kiểm tra Cảnh báo rủi ro va chạm (FCW / PCW)

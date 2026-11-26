@@ -1,38 +1,49 @@
 """
-Chuyển đổi nhãn BDD100k từ định dạng JSON sang file txt theo chuẩn YOLOv5
+Chuyển đổi nhãn BDD100k từ định dạng JSON sang file txt theo chuẩn YOLOv12
+Phục vụ tiền xử lý dữ liệu huấn luyện phối hợp (Joint-Training) trên Google Colab.
 """
 import os
+import sys
 import json
 from pathlib import Path
-import sys
-from tqdm import tqdm #Thư viện hiển thị thanh tiến trình trực quan (% hoàn thành, tốc độ xử lý) trên màn hình dòng lệnh khi lặp qua danh sách dài.
+from tqdm import tqdm
+
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 
 current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent
 sys.path.append(str(project_root))
 
-from utils.label_mapper import map_bdd_detection
+try:
+    from src.utils.label_mapper import map_bdd_detection
+except ImportError:
+    from utils.label_mapper import map_bdd_detection
+
 
 def convert_bdd100k_to_yolo(box2d, img_width, img_height):
     """
-    Chuyển đổi bounding box từ định dạng BDD100k sang định dạng YOLOv5
+    Chuyển đổi bounding box từ định dạng BDD100k sang định dạng YOLO
     :param box2d: dict chứa thông tin bounding box theo định dạng BDD100k
     :param img_width: chiều rộng ảnh
     :param img_height: chiều cao ảnh
-    :return: list [class_id, x_center, y_center, width, height] theo chuẩn YOLOv5
+    :return: list [x_center, y_center, width, height] theo chuẩn YOLO
     """
     x1 = float(box2d['x1'])
     y1 = float(box2d['y1'])
     x2 = float(box2d['x2'])
     y2 = float(box2d['y2'])
 
-    # Tính toán tọa độ trung tâm và kích thước của bounding box theo chuẩn YOLOv5
-    x_center = (x1 + x2) / 2.0 / img_width #tính tọa độ tâm trục ngang
-    y_center = (y1 + y2) / 2.0 / img_height #tính tọa độ tâm trục dọc
-    width = (x2 - x1) / img_width #tính chiều rộng tương đối
-    height = (y2 - y1) / img_height #tính chiều cao 
+    # Tính toán tọa độ trung tâm và kích thước của bounding box theo chuẩn YOLO
+    x_center = (x1 + x2) / 2.0 / img_width
+    y_center = (y1 + y2) / 2.0 / img_height
+    width = (x2 - x1) / img_width
+    height = (y2 - y1) / img_height
 
-    #Giới hạn trong khoảng [0, 1] để tránh lỗi khi bounding box nằm ngoài ảnh
+    # Giới hạn trong khoảng [0, 1] để tránh lỗi khi bounding box nằm ngoài ảnh
     x_center = max(0.0, min(1.0, x_center))
     y_center = max(0.0, min(1.0, y_center))
     width = max(0.0, min(1.0, width))
@@ -40,19 +51,19 @@ def convert_bdd100k_to_yolo(box2d, img_width, img_height):
 
     return x_center, y_center, width, height
 
+
 def process_bdd_labels(json_path, output_dir, img_width=1280, img_height=720):
-    #Tạo thư mục đầu ra nếu chưa tồn tại
     os.makedirs(output_dir, exist_ok=True)
 
     print(f"Đang đọc nhãn từ file: {json_path}")
-    with open(json_path,"r", encoding="utf-8") as f:
+    with open(json_path, "r", encoding="utf-8") as f:
         data = json.load(f)
 
-    print(f"Đang chuyển đổi {len(data)} nhãn sang định dạng YOLOv5...")
+    print(f"Đang chuyển đổi {len(data)} nhãn sang định dạng YOLO...")
     converted_count = 0
     box_count = 0
-    for item in tqdm(data):
-        img_name = item.get("name","")
+    for item in tqdm(data, desc="Converting BDD100K"):
+        img_name = item.get("name", "")
         if not img_name:
             continue
 
@@ -87,33 +98,31 @@ def process_bdd_labels(json_path, output_dir, img_width=1280, img_height=720):
         converted_count += 1
     print(f"Hoàn tất chuyển đổi. Đã xử lý {converted_count} nhãn và tạo {box_count} bounding box.")
 
+
 if __name__ == "__main__":
-    # 1. Chuyển đổi tập VAL
+    # Script này dùng để tiền xử lý tập nhãn BDD100K JSON sang YOLO txt trên Google Colab
     json_val = "/content/bdd100k_raw/bdd100k_labels_release/bdd100k/labels/bdd100k_labels_images_val.json"
     if not os.path.exists(json_val):
         json_val = "/content/bdd100k_raw/bdd100k_labels_release/bdd100k_labels_images_val.json"
-        
-    out_val = "/content/dataset_processed/labels/val"
-    os.makedirs(out_val, exist_ok=True)
-    
-    if os.path.exists(json_val):
+
+    if not os.path.exists(json_val):
+        print("[THONG BAO] Script nay duoc thiet ke de tien xu ly du lieu tho BDD100K tren Google Colab.")
+        print(f"           Khong tim thay tap nhan JSON tai: /content/bdd100k_raw/...")
+        print("           Du an hien tai da co san trong so trong 'weights/', ban co the chay truc tiep Web Demo bang: .venv\\Scripts\\streamlit run src/app.py")
+    else:
+        out_val = "/content/dataset_processed/labels/val"
+        os.makedirs(out_val, exist_ok=True)
         print(f"Đang xử lý tập val từ: {json_val}")
         process_bdd_labels(json_val, out_val)
-    else:
-        print("Không tìm thấy file nhãn val!")
 
-    # 2. Chuyển đổi tập TRAIN
-    json_train = "/content/bdd100k_raw/bdd100k_labels_release/bdd100k/labels/bdd100k_labels_images_train.json"
-    if not os.path.exists(json_train):
-        json_train = "/content/bdd100k_raw/bdd100k_labels_release/bdd100k_labels_images_train.json"
-        
-    out_train = "/content/dataset_processed/labels/train"
-    os.makedirs(out_train, exist_ok=True)
-    
-    if os.path.exists(json_train):
-        print(f"Đang xử lý tập train từ: {json_train}")
-        process_bdd_labels(json_train, out_train)
-    else:
-        print("Không tìm thấy file nhãn train!")
+        json_train = "/content/bdd100k_raw/bdd100k_labels_release/bdd100k/labels/bdd100k_labels_images_train.json"
+        if not os.path.exists(json_train):
+            json_train = "/content/bdd100k_raw/bdd100k_labels_release/bdd100k_labels_images_train.json"
 
-    print("Chuyển đổi toàn bộ nhãn BDD100k hoàn tất!")
+        if os.path.exists(json_train):
+            out_train = "/content/dataset_processed/labels/train"
+            os.makedirs(out_train, exist_ok=True)
+            print(f"Đang xử lý tập train từ: {json_train}")
+            process_bdd_labels(json_train, out_train)
+
+        print("Chuyển đổi toàn bộ nhãn BDD100k hoàn tất!")

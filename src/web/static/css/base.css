@@ -1,0 +1,152 @@
+/* ==========================================================================
+ * BASE LAYOUT, RESET & TOP NAVIGATION BAR
+ * Tối ưu hóa 100vh Zero Page Scroll chuẩn màn hình Laptop & Desktop.
+ * ========================================================================== */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+.is-hidden {
+  display: none !important;
+}
+
+.app-shell {
+  min-height: 100vh;
+  max-width: 100%;
+  padding: 0.45rem 1rem 0.55rem 1rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TOP NAVIGATION BAR CHUẨN TỐI GIẢN */
+.top-header {
+  height: 44px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 16px;
+  margin-bottom: 10px;
+  box-shadow: var(--shadow-card);
+  flex-shrink: 0;
+}
+
+.header-title {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--text-primary);
+  letter-spacing: -0.3px;
+}
+
+.header-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot-pill {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-default);
+  color: var(--text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: var(--radius-pill);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.dot-green {
+  width: 6.5px;
+  height: 6.5px;
+  background: var(--accent-green);
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.dot-amber {
+  width: 6.5px;
+  height: 6.5px;
+  background: var(--accent-amber);
+  border-radius: 50%;
+  display: inline-block;
+}
+
+/* BỐ CỤC 2 CỘT TỈ LỆ 1.0 : 2.3 (~30% TRÁI | ~70% PHẢI) */
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: minmax(300px, 1fr) minmax(0, 2.3fr);
+  gap: 16px;
+  flex: 1;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.col-left,
+.col-right {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+}
+
+.enterprise-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: 10px 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.section-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.section-label-spaced {
+  margin-top: 6px;
+}
+
+.section-label-inline {
+  margin-bottom: 0;
+}
+
+/* MÀU SẮC TRẠNG THÁI CHUNG */
+.val-blue { color: var(--accent-blue) !important; }
+.val-safe { color: var(--accent-green-dark) !important; }
+.val-caution { color: var(--accent-amber-dark) !important; }
+.val-danger { color: var(--accent-red) !important; }
+.val-cyan { color: var(--accent-cyan) !important; }
+
+/* Responsive cho màn hình nhỏ hơn */
+@media (max-width: 1024px) {
+  .dashboard-grid {
+    grid-template-columns: 1fr;
+  }
+}

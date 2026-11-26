@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Nền trắng bo góc + viền mảnh đồng bộ 100% với Dashboard Ultra-Clean White Enterprise -->
+  <rect x="2" y="2" width="60" height="60" rx="14" fill="#ffffff" stroke="#e2e8f0" stroke-width="2.5"/>
+  <!-- Nhánh liên kết ngữ cảnh bo cong mềm chuẩn Lucide -->
+  <path d="M32 23 V33 M19 41 V37 Q19 33 23 33 H41 Q45 33 45 37 V41"
+        fill="none" stroke="#0f172a" stroke-width="3.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- Node gốc (Context Engine) nhấn màu Royal Blue đồng bộ nút chính -->
+  <circle cx="32" cy="17" r="6" fill="#ffffff" stroke="#2563eb" stroke-width="3.8"/>
+  <!-- 2 Node con (Nhân tố giao thông: Detection & Segmentation) -->
+  <circle cx="19" cy="47" r="5.5" fill="#ffffff" stroke="#0f172a" stroke-width="3.6"/>
+  <circle cx="45" cy="47" r="5.5" fill="#ffffff" stroke="#0f172a" stroke-width="3.6"/>
+</svg>

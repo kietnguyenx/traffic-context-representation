@@ -1,812 +1,770 @@
 """
-Giao Diện Web Demo: Traffic Context Representation & ADAS Perception Dashboard
-(Multi-Task Deep Learning: YOLO + SegFormer)
-
-Thiết kế theo chuẩn Cockpit ADAS hiện đại khớp với mockup:
-- Top Navigation Bar: Tiêu đề hệ thống kèm Status Badge (🟢 Active • 30 FPS)
-- Cột 1 (Controls):
-  - Kéo-thả trực tiếp video hành trình (.mp4, .avi, .mov)
-  - Dataset Selector (BDD100K, nuScenes, Waymo, KITTI)
-  - 4 Toggles: YOLO 3D Bounding Boxes, SegFormer Drivable Area, SegFormer Lane Markings, Context Reasoning Graph
-  - Nút Start Analysis (Neon Cyan)
-- Cột 2 (Center):
-  - 1080p Driver-view Dashcam Video: Trạng thái chờ (Standby) khi chưa có video, hiển thị preview ngay khi kéo thả video vào.
-  - Telemetry Panel (Vận tốc, Khoảng cách, TTC, Mức độ rủi ro)
-- Cột 3 (Right):
-  - Telemetry Sidebar / HUD (Ego Lane, Lead Vehicle [Caution in amber], Traffic Signal, Pedestrian Hazard, Terminal JSON)
-
-Tác giả: Thành viên 3 (Phụ trách Context Engine, Pipeline & Web Demo)
+Ứng dụng Web Dashboard Nhận Thức Ngữ Cảnh Giao Thông & ADAS Real-Time Perception (Streamlit)
+Giao diện Phong Cách Ultra-Clean White Enterprise (khớp 100% với pro_video_change_toggle_ui.png):
+- Header: Tiêu đề in đậm Traffic Context Representation + 2 viên thuốc YOLO và SegFormer
+- Cột Trái (~30%): Khung video có nút [✕] đổi video + 4 nút gạt công tắc tròn iOS (lưới 2x2) + Nút BẮT ĐẦU PHÂN TÍCH + Khung JSON
+- Cột Phải (~70%): Sân khấu Full Video 16:9 + Thanh tiến độ mảnh + Buồng lái ADAS Dạng Băng Ngang Liền Mạch (Ribbon Dock)
 """
 
-import os
 import sys
+import os
 import time
-import json
+import base64
+import shutil
 import tempfile
+import threading
+import queue
+import importlib
 import cv2
 import numpy as np
 import streamlit as st
 
-# Thêm thư mục hiện tại vào sys.path để import pipeline và utils
+# Thêm thư mục hiện tại vào sys.path để import an toàn
 current_dir = os.path.dirname(os.path.abspath(__file__))
 if current_dir not in sys.path:
     sys.path.append(current_dir)
 
-from pipeline import DrivingPerceptionPipeline
-from utils.demo_generator import get_demo_scenario_data
+CODE_REV = "2026_11_19_v12_per_signal_compact_badge"
+if st.session_state.get("_code_rev") != CODE_REV:
+    try:
+        import src.context_engine as _ctx_mod
+        import src.utils.segformer_loader as _seg_mod
+        import src.utils.visualizer as _vis_mod
+        import src.pipeline as _pipeline_mod
+        import src.ui_components as _ui_mod
+    except ImportError:
+        import context_engine as _ctx_mod
+        import utils.segformer_loader as _seg_mod
+        import utils.visualizer as _vis_mod
+        import pipeline as _pipeline_mod
+        import ui_components as _ui_mod
+    importlib.reload(_ctx_mod)
+    importlib.reload(_seg_mod)
+    importlib.reload(_vis_mod)
+    importlib.reload(_pipeline_mod)
+    importlib.reload(_ui_mod)
+    st.session_state["_code_rev"] = CODE_REV
+    if "pipeline" in st.session_state and st.session_state.pipeline is not None:
+        p_inst = st.session_state.pipeline
+        p_inst.__class__ = _pipeline_mod.DrivingPerceptionPipeline
+        if getattr(p_inst, "segformer_wrapper", None) is not None:
+            p_inst.segformer_wrapper.__class__ = _seg_mod.SegFormerWrapper
+        if getattr(p_inst, "engine", None) is not None:
+            p_inst.engine.__class__ = _ctx_mod.TrafficContextEngine
+            p_inst.engine.reset()
+        if getattr(p_inst, "visualizer", None) is not None:
+            p_inst.visualizer.__class__ = _vis_mod.ADASVisualizer
+            p_inst.visualizer._buffer_shape = None
 
-# 1. CẤU HÌNH TRANG WEB (FULL WIDTH, NO DEFAULT SIDEBAR)
+try:
+    from src.pipeline import DrivingPerceptionPipeline
+    from src.ui_components import (
+        load_custom_css,
+        render_top_navigation,
+        render_video_dropzone,
+        render_video_ready_bar,
+        render_standby_viewport,
+        render_slim_progress,
+        render_cockpit_telemetry,
+        render_terminal_json,
+        inject_bottom_align_script
+    )
+except ImportError:
+    from pipeline import DrivingPerceptionPipeline
+    from ui_components import (
+        load_custom_css,
+        render_top_navigation,
+        render_video_dropzone,
+        render_video_ready_bar,
+        render_standby_viewport,
+        render_slim_progress,
+        render_cockpit_telemetry,
+        render_terminal_json,
+        inject_bottom_align_script
+    )
+
+# 1. CẤU HÌNH TRANG WEB
 st.set_page_config(
-    page_title="Traffic Context Representation & ADAS Perception Dashboard",
+    page_title="Traffic Context Representation | Real-Time ADAS",
     page_icon="🚗",
     layout="wide",
     initial_sidebar_state="collapsed"
 )
 
-# 2. BỘ STYLING CSS HIỆN ĐẠI THEO PHONG CÁCH ADAS COCKPIT MOCKUP
-st.markdown("""
-<style>
-    /* Ẩn hoàn toàn header và toolbar mặc định của Streamlit */
-    header[data-testid="stHeader"] {
-        display: none !important;
-        visibility: hidden !important;
-        height: 0px !important;
-    }
-    .stAppToolbar {
-        display: none !important;
-    }
-    #MainMenu {
-        visibility: hidden !important;
-    }
-    footer {
-        visibility: hidden !important;
-    }
-    
-    /* Căn chỉnh không gian tổng thể */
-    .stApp {
-        background-color: #0b0f19;
-        color: #e2e8f0;
-        font-family: 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
-    }
-    .block-container {
-        padding-top: 0.8rem !important;
-        padding-bottom: 1rem !important;
-        padding-left: 1.5rem !important;
-        padding-right: 1.5rem !important;
-        max-width: 100% !important;
-    }
+# 2. NẠP STYLESHEET TỪ FILE CSS TÁCH BIỆT (ASSETS)
+load_custom_css(os.path.join(current_dir, "assets", "style.css"))
 
-    /* TOP NAVIGATION BAR */
-    .top-nav {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        background: #111827;
-        border: 1px solid #1f293d;
-        border-radius: 12px;
-        padding: 10px 18px;
-        margin-bottom: 14px;
-        box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
-    }
-    .top-nav-left {
-        display: flex;
-        align-items: center;
-        gap: 12px;
-    }
-    .hamburger-icon {
-        font-size: 18px;
-        color: #94a3b8;
-        cursor: pointer;
-        padding-right: 4px;
-    }
-    .top-title {
-        font-size: 15px;
-        font-weight: 700;
-        color: #f1f5f9;
-        letter-spacing: 0.3px;
-    }
-    .top-divider {
-        color: #475569;
-        margin: 0 4px;
-    }
-    .top-subtitle {
-        font-size: 14px;
-        color: #94a3b8;
-        font-weight: 400;
-    }
-    .status-badge {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        background: rgba(34, 197, 94, 0.12);
-        border: 1px solid rgba(34, 197, 94, 0.35);
-        border-radius: 20px;
-        padding: 4px 14px;
-        color: #4ade80;
-        font-size: 12.5px;
-        font-weight: 600;
-        letter-spacing: 0.4px;
-    }
-    .status-dot {
-        width: 8px;
-        height: 8px;
-        background-color: #22c55e;
-        border-radius: 50%;
-        box-shadow: 0 0 8px #22c55e;
-        display: inline-block;
-        animation: pulse-dot 2s infinite;
-    }
-    @keyframes pulse-dot {
-        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7); }
-        70% { transform: scale(1.1); box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
-        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
-    }
+# 3. KHỞI TẠO PIPELINE & TOP NAVIGATION BAR (CHUẨN TỐI GIẢN)
+if "pipeline" not in st.session_state:
+    st.session_state.pipeline = DrivingPerceptionPipeline(fps=30)
+pipeline = st.session_state.pipeline
+model_status = pipeline.get_model_status()
+has_cuda = getattr(pipeline, "has_cuda", False)
 
-    /* KHUNG PANEL CHUNG (ADAS CONTAINERS) */
-    .panel-header {
-        font-size: 14px;
-        font-weight: 600;
-        color: #cbd5e1;
-        margin-bottom: 12px;
-        letter-spacing: 0.4px;
-    }
+render_top_navigation(model_status)
 
-    /* TÙY BIẾN STREAMLIT FILE UPLOADER (THANH TRÊN KHỚP ẢNH MẪU) */
-    div[data-testid="stFileUploader"] {
-        margin-bottom: 0px !important;
-    }
-    div[data-testid="stFileUploader"] section[data-testid="stFileUploadDropzone"] {
-        border: 1px solid #1f293d !important;
-        border-radius: 8px !important;
-        background: #111827 !important;
-        padding: 8px 12px !important;
-        text-align: left !important;
-    }
-    div[data-testid="stFileUploader"] button {
-        border: 1px solid #2a384f !important;
-        background: #161f30 !important;
-        color: #f1f5f9 !important;
-        border-radius: 6px !important;
-        font-size: 12.5px !important;
-        font-weight: 500 !important;
-        padding: 5px 12px !important;
-    }
-
-    /* VÙNG KÉO THẢ NÉT ĐỨT (DASHED DROPZONE KHỚP ẢNH MẪU 100%) */
-    .dropzone-container {
-        border: 1.5px dashed #1e3a5f;
-        border-radius: 10px;
-        background: rgba(12, 18, 30, 0.6);
-        padding: 24px 14px;
-        text-align: center;
-        margin-top: 10px;
-        margin-bottom: 14px;
-        transition: all 0.25s ease;
-        cursor: pointer;
-    }
-    .dropzone-container:hover {
-        border-color: #00f2fe;
-        background: rgba(15, 23, 42, 0.85);
-        box-shadow: 0 0 16px rgba(0, 242, 254, 0.25);
-    }
-    .dropzone-icon {
-        font-size: 26px;
-        color: #94a3b8;
-        margin-bottom: 6px;
-    }
-    .dropzone-text {
-        font-size: 12.5px;
-        color: #8b949e;
-        line-height: 1.45;
-    }
-
-    /* NHÃN CONTROLS & DROPDOWN */
-    .control-label {
-        font-size: 13px;
-        font-weight: 500;
-        color: #cbd5e1;
-        margin-top: 10px;
-        margin-bottom: 4px;
-    }
-
-    /* TÙY BIẾN STREAMLIT SELECTBOX */
-    div[data-baseweb="select"] > div {
-        background-color: #111827 !important;
-        border: 1px solid #1f293d !important;
-        border-radius: 8px !important;
-        color: #f1f5f9 !important;
-        font-size: 13.5px !important;
-    }
-
-    /* TÙY BIẾN TOGGLES */
-    div[data-testid="stToggle"] {
-        margin-top: 6px !important;
-        margin-bottom: 6px !important;
-    }
-    div[data-testid="stToggle"] label p {
-        font-size: 13px !important;
-        color: #cbd5e1 !important;
-        font-weight: 400 !important;
-    }
-
-    /* NÚT START ANALYSIS (NEON CYAN PILL) */
-    .stButton > button {
-        background: linear-gradient(90deg, #00f2fe 0%, #22d3ee 100%) !important;
-        color: #050811 !important;
-        border: none !important;
-        border-radius: 22px !important;
-        padding: 9px 20px !important;
-        font-size: 14.5px !important;
-        font-weight: 700 !important;
-        letter-spacing: 0.3px !important;
-        box-shadow: 0 0 18px rgba(0, 242, 254, 0.45) !important;
-        transition: all 0.25s ease !important;
-        margin-top: 12px !important;
-        width: 100% !important;
-    }
-    .stButton > button:hover {
-        transform: translateY(-1px) scale(1.01) !important;
-        box-shadow: 0 0 25px rgba(0, 242, 254, 0.7) !important;
-    }
-
-    /* KHUNG STANDBY CHO VIDEO KHI CHƯA NẠP */
-    .video-standby-viewport {
-        border: 1px dashed #334155;
-        border-radius: 10px;
-        background: #080c14;
-        min-height: 380px;
-        display: flex;
-        flex-direction: column;
-        align-items: center;
-        justify-content: center;
-        gap: 12px;
-        padding: 24px;
-        text-align: center;
-    }
-    .standby-icon {
-        font-size: 42px;
-        color: #475569;
-    }
-    .standby-title {
-        font-size: 15px;
-        font-weight: 600;
-        color: #94a3b8;
-        letter-spacing: 0.5px;
-    }
-    .standby-desc {
-        font-size: 12.5px;
-        color: #64748b;
-        max-width: 400px;
-        line-height: 1.5;
-    }
-
-    /* THẺ TELEMETRY PHÍA DƯỚI VIDEO */
-    .telemetry-bottom-card {
-        background: #0e1422;
-        border: 1px solid #1e293b;
-        border-radius: 12px;
-        padding: 14px 18px;
-        margin-top: 10px;
-    }
-    .telemetry-grid {
-        display: grid;
-        grid-template-columns: repeat(4, 1fr);
-        gap: 12px;
-        margin-top: 6px;
-    }
-    .telemetry-item {
-        background: #111827;
-        border: 1px solid #1f293d;
-        border-radius: 8px;
-        padding: 10px 12px;
-        text-align: center;
-    }
-    .telemetry-lbl {
-        font-size: 10.5px;
-        text-transform: uppercase;
-        color: #8b949e;
-        letter-spacing: 0.8px;
-    }
-    .telemetry-val {
-        font-size: 17px;
-        font-weight: 700;
-        margin-top: 3px;
-        color: #f1f5f9;
-    }
-    .telemetry-val.cyan { color: #22d3ee; }
-    .telemetry-val.amber { color: #f59e0b; }
-    .telemetry-val.green { color: #22c55e; }
-    .telemetry-val.red { color: #ef4444; }
-    .telemetry-val.muted { color: #64748b; }
-
-    /* HUD CARDS Ở CỘT PHẢI */
-    .hud-card {
-        background: #111827;
-        border: 1px solid #1f293d;
-        border-radius: 12px;
-        padding: 12px 16px;
-        margin-bottom: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
-    }
-    .hud-title {
-        font-size: 13px;
-        font-weight: 500;
-        color: #94a3b8;
-        margin-bottom: 4px;
-    }
-    .hud-val-primary {
-        font-size: 15px;
-        font-weight: 600;
-        color: #f1f5f9;
-    }
-    
-    /* THẺ LEAD VEHICLE (CAUTION IN AMBER) */
-    .hud-card.amber-glow {
-        border: 1.5px solid #d97706 !important;
-        background: linear-gradient(135deg, rgba(217, 119, 6, 0.12) 0%, rgba(17, 24, 39, 0.95) 100%) !important;
-        box-shadow: 0 0 16px rgba(217, 119, 6, 0.25) !important;
-    }
-    .hud-val-amber {
-        font-size: 15px;
-        font-weight: 600;
-        color: #fbbf24;
-    }
-    .hud-sub-amber {
-        font-size: 12px;
-        color: #f59e0b;
-        margin-top: 2px;
-    }
-
-    /* THẺ TRAFFIC SIGNAL */
-    .hud-val-red {
-        font-size: 15px;
-        font-weight: 700;
-        color: #f87171;
-    }
-
-    /* THẺ PEDESTRIAN HAZARD */
-    .hud-val-alert {
-        font-size: 15px;
-        font-weight: 600;
-        color: #cbd5e1;
-    }
-
-    /* TERMINAL CONTAINER */
-    .terminal-card {
-        background: #060913;
-        border: 1px solid #1e293b;
-        border-radius: 10px;
-        overflow: hidden;
-        margin-top: 4px;
-    }
-    .terminal-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        background: #0d131f;
-        padding: 6px 12px;
-        border-bottom: 1px solid #1e293b;
-        font-size: 12px;
-        color: #94a3b8;
-    }
-    .terminal-close {
-        color: #64748b;
-        font-size: 13px;
-        cursor: pointer;
-    }
-    .terminal-body {
-        padding: 10px 14px;
-        font-family: 'Fira Code', 'Cascadia Code', Consolas, monospace;
-        font-size: 12px;
-        line-height: 1.5;
-        color: #e2e8f0;
-        overflow-x: auto;
-        min-height: 160px;
-    }
-    .json-punct { color: #94a3b8; }
-</style>
-""", unsafe_allow_html=True)
-
-
-# 3. TOP NAVIGATION BAR (HEADER KHỚP VỚI MOCKUP)
-st.markdown("""
-<div class="top-nav">
-    <div class="top-nav-left">
-        <span class="hamburger-icon">☰</span>
-        <span class="top-title">Traffic Context Representation & ADAS Perception Dashboard</span>
-        <span class="top-divider">|</span>
-        <span class="top-subtitle">Multi-Task Deep Learning (YOLO + SegFormer)</span>
-    </div>
-    <div class="top-nav-right">
-        <div class="status-badge">
-            <span class="status-dot"></span>
-            <span>Active • 30 FPS</span>
-        </div>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
-
-# 4. CHIA BỐ CỤC 3 CỘT (CONTROLS - VIDEO - HUD)
-col_controls, col_video, col_hud = st.columns([1.15, 2.5, 1.25], gap="medium")
-
+# 4. CHIA BỐ CỤC 2 CỘT CỐ ĐỊNH TRONG 1 MÀN HÌNH: [CỘT TRÁI: ~30%] | [CỘT PHẢI: ~70%]
+col_ctrl, col_main = st.columns([1.0, 2.3], gap="medium")
 
 # -------------------------------------------------------------
-# CỘT 1: CONTROLS
+# CỘT 1 (TRÁI): ĐIỀU KHIỂN & ĐẦU VÀO VIDEO + NHẬT KÝ NGỮ CẢNH
 # -------------------------------------------------------------
-with col_controls:
-    st.markdown('<div class="panel-header">Controls</div>', unsafe_allow_html=True)
+with col_ctrl:
+    with st.container(border=True):
+        st.markdown(
+            '<div class="section-label"><span>ĐẦU VÀO VIDEO HÀNH TRÌNH</span></div>',
+            unsafe_allow_html=True
+        )
 
-    # Vùng upload video: Bản thân st.file_uploader đã hỗ trợ KÉO & THẢ TRỰC TIẾP
-    uploaded_file = st.file_uploader(
-        "Upload Video",
-        type=["mp4", "avi", "mov"],
-        label_visibility="collapsed",
-        help="Bấm Upload hoặc kéo thả video trực tiếp vào đây"
-    )
+        if "uploader_key" not in st.session_state:
+            st.session_state.uploader_key = 0
 
-    # Khung kéo thả nét đứt trực quan (Video drag-and-drop zone from here)
-    if uploaded_file is None:
-        st.markdown("""
-        <div class="dropzone-container" onclick="const el = window.parent.document.querySelector('input[type=file]') || document.querySelector('input[type=file]'); if(el) el.click();">
-            <div class="dropzone-icon">⇧</div>
-            <div class="dropzone-text">Video drag-and-drop<br>zone from here</div>
-        </div>
-        """, unsafe_allow_html=True)
-    else:
-        st.markdown(f"""
-        <div class="dropzone-container" style="border-color: #22c55e; background: rgba(34, 197, 94, 0.1);">
-            <div class="dropzone-icon" style="color: #22c55e;">✅</div>
-            <div class="dropzone-text" style="color: #4ade80;">Đã nhận file: <b>{uploaded_file.name}</b><br><small style="color: #94a3b8;">Nhấn 'Start Analysis' bên dưới để bắt đầu</small></div>
-        </div>
-        """, unsafe_allow_html=True)
+        def _clear_uploaded_video():
+            old_key = st.session_state.get("uploader_key", 0)
+            st.session_state.pop(f"dashcam_uploader_{old_key}", None)
+            st.session_state.uploader_key = old_key + 1
+            for path_key in ["uploaded_temp_path", "analyzed_video_path"]:
+                old_p = st.session_state.get(path_key)
+                if old_p:
+                    try:
+                        if os.path.exists(old_p):
+                            os.remove(old_p)
+                    except Exception:
+                        pass
+            st.session_state.uploaded_temp_path = None
+            st.session_state.uploaded_sig = None
+            st.session_state.uploaded_meta = None
+            st.session_state.analyzed_video_path = None
+            st.session_state.last_log = None
+            st.session_state.conclusion_json = None
+            st.session_state.conclusion_info = None
+            st.session_state.conclusion_telemetry = None
+            if "pipeline" in st.session_state and st.session_state.pipeline is not None:
+                st.session_state.pipeline.reset()
 
-    # Tùy chọn chạy video mẫu (nếu người dùng muốn thử nghiệm nhanh khi chưa có video)
-    use_sample = st.checkbox("Sử dụng video mẫu (Sample 1080p)", value=False)
+        uploaded_file = st.file_uploader(
+            "Upload Video",
+            type=["mp4", "avi", "mov"],
+            label_visibility="collapsed",
+            help="Kéo thả trực tiếp video camera hành trình vào đây",
+            key=f"dashcam_uploader_{st.session_state.uploader_key}"
+        )
 
-    # Dropdown chọn tập dữ liệu
-    st.markdown('<div class="control-label">Dataset Selector</div>', unsafe_allow_html=True)
-    dataset_name = st.selectbox(
-        "Dataset Selector",
-        ["BDD100K", "nuScenes", "Waymo", "KITTI"],
-        label_visibility="collapsed"
-    )
+        render_video_dropzone(uploaded_file)
 
-    st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
+        # Nút xóa video native ẩn (được trigger ngay lập tức khi bấm [✕] trên thanh file)
+        st.button("✕", key="btn_clear_uploaded_video", on_click=_clear_uploaded_video)
 
-    # 4 Toggles theo thiết kế
-    toggle_boxes = st.toggle("YOLO 3D Bounding Boxes", value=True)
-    toggle_drivable = st.toggle("SegFormer Drivable Area", value=True)
-    toggle_lanes = st.toggle("SegFormer Lane Markings", value=True)
-    toggle_graph = st.toggle("Context Reasoning Graph", value=True)
+        # 4 Lớp hiển thị AI xếp thành lưới 2x2 gọn gàng với nút gạt tròn iOS
+        st.markdown(
+            '<div class="section-label" style="margin-top: 4px;"><span>LỚP HIỂN THỊ AI</span></div>',
+            unsafe_allow_html=True
+        )
+        t_col1, t_col2 = st.columns(2, gap="small")
+        with t_col1:
+            toggle_boxes = st.toggle("YOLO Boxes", value=True)
+            toggle_lanes = st.toggle("Lane Markings", value=True)
+        with t_col2:
+            toggle_drivable = st.toggle("Drivable Area", value=True)
+            toggle_graph = st.toggle("Spatial Graph", value=True)
 
-    st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+        # CẢM BIẾN MÔI TRƯỜNG & THỜI TIẾT TỰ ĐỘNG QUA AI OPTICAL SENSING
+        selected_weather = "Tự động (AI Optical)"
+        st.markdown(
+            '<div class="auto-sensing-badge"><div class="sensing-dot"></div><span>Cảm biến môi trường: <b>AI Optical (Tự động)</b></span></div>',
+            unsafe_allow_html=True
+        )
 
-    # Nút bấm chính
-    start_btn = st.button("Start Analysis", use_container_width=True)
+        st.markdown("<div style='height: 4px;'></div>", unsafe_allow_html=True)
+        start_btn = st.button("BẮT ĐẦU PHÂN TÍCH", key="btn_start_analysis", use_container_width=True)
+        no_video_alert_placeholder = st.empty()
 
+    # KHỐI NHẬT KÝ NGỮ CẢNH THỜI GIAN THỰC (CĂN ĐÁY BẰNG VỚI BUỒNG LÁI ĐIỆN TỬ BÊN PHẢI)
+    terminal_placeholder = st.empty()
+    inject_bottom_align_script()
 
 # -------------------------------------------------------------
-# CỘT 2: 1080p DRIVER-VIEW DASHCAM VIDEO & TELEMETRY
+# CỘT 2 (PHẢI): SÂN KHẤU FULL VIDEO 16:9 + BUỒNG LÁI ADAS BĂNG NGANG
 # -------------------------------------------------------------
-with col_video:
-    st.markdown('<div class="panel-header">1080p Driver-view Dashcam Video</div>', unsafe_allow_html=True)
-    video_placeholder = st.empty()
-    progress_placeholder = st.empty()
-
-    st.markdown('<div class="panel-header" style="margin-top: 14px;">Telemetry</div>', unsafe_allow_html=True)
+with col_main:
+    with st.container(border=True):
+        video_placeholder = st.empty()
+        progress_placeholder = st.empty()
     telemetry_placeholder = st.empty()
 
-
 # -------------------------------------------------------------
-# CỘT 3: TELEMETRY SIDEBAR / HUD
+# 5. XỬ LÝ TRẠNG THÁI HIỂN THỊ TRUNG TÂM
 # -------------------------------------------------------------
-with col_hud:
-    st.markdown('<div class="panel-header">Telemetry Sidebar / HUD</div>', unsafe_allow_html=True)
-
-    card_egolane = st.empty()
-    card_leadveh = st.empty()
-    card_signal = st.empty()
-    card_pedestrian = st.empty()
-
-    st.markdown("<div style='height: 6px;'></div>", unsafe_allow_html=True)
-    terminal_placeholder = st.empty()
-
-
-# -------------------------------------------------------------
-# CÁC HÀM TIỆN ÍCH RENDER HUD & TELEMETRY
-# -------------------------------------------------------------
-def render_hud_cards(ego_lane="--", lead_dist="--", lead_alert="Standby", 
-                     signal="--", ped_hazard="--", is_amber=False):
-    # Card 1: Ego Lane
-    card_egolane.markdown(f"""
-    <div class="hud-card">
-        <div class="hud-title">Ego Lane</div>
-        <div class="hud-val-primary">{ego_lane}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Card 2: Lead Vehicle (Amber Caution)
-    amber_class = "amber-glow" if is_amber else ""
-    val_class = "hud-val-amber" if is_amber else "hud-val-primary"
-    sub_color = "#f59e0b" if is_amber else "#64748b"
-    card_leadveh.markdown(f"""
-    <div class="hud-card {amber_class}">
-        <div class="hud-title">Lead Vehicle</div>
-        <div class="{val_class}">ID #1 - Distance: {lead_dist}</div>
-        <div class="hud-sub-amber" style="color: {sub_color};">({lead_alert})</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Card 3: Traffic Signal
-    signal_class = "hud-val-red" if "RED" in signal else "hud-val-primary"
-    card_signal.markdown(f"""
-    <div class="hud-card">
-        <div class="hud-title">Traffic Signal</div>
-        <div class="{signal_class}">{signal}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # Card 4: Pedestrian Hazard
-    card_pedestrian.markdown(f"""
-    <div class="hud-card">
-        <div class="hud-title">Pedestrian Hazard</div>
-        <div class="hud-val-alert">{ped_hazard}</div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def render_terminal_json(json_data):
-    """Vẽ khối Terminal có màu sắc cú pháp JSON đẹp mắt khớp ảnh mẫu"""
-    formatted_json = json.dumps(json_data, indent=2)
-    terminal_placeholder.markdown(f"""
-    <div class="terminal-card">
-        <div class="terminal-header">
-            <span>Terminal</span>
-            <span class="terminal-close">✕</span>
-        </div>
-        <div class="terminal-body"><pre style="margin: 0; background: transparent; padding: 0;"><code>{formatted_json}</code></pre></div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-def render_telemetry_bar(speed="--", gap="--", ttc="--", risk="STANDBY"):
-    ttc_class = "red" if (isinstance(ttc, (int, float)) and ttc < 1.8) else ("green" if ttc != "--" else "muted")
-    risk_class = "amber" if risk == "CAUTION" else ("green" if risk == "SAFE" else "muted")
-    speed_class = "cyan" if speed != "--" else "muted"
-    gap_class = "amber" if gap != "--" else "muted"
-
-    telemetry_placeholder.markdown(f"""
-    <div class="telemetry-bottom-card">
-        <div class="telemetry-grid">
-            <div class="telemetry-item">
-                <div class="telemetry-lbl">Vận Tốc Ego</div>
-                <div class="telemetry-val {speed_class}">{speed}{' km/h' if speed != '--' else ''}</div>
-            </div>
-            <div class="telemetry-item">
-                <div class="telemetry-lbl">Khoảng Cách Xe Trước</div>
-                <div class="telemetry-val {gap_class}">{gap}{' m' if gap != '--' else ''}</div>
-            </div>
-            <div class="telemetry-item">
-                <div class="telemetry-lbl">TTC (Thời Gian Va Chạm)</div>
-                <div class="telemetry-val {ttc_class}">{ttc}{'s' if ttc != '--' else ''}</div>
-            </div>
-            <div class="telemetry-item">
-                <div class="telemetry-lbl">Cấp Độ Rủi Ro</div>
-                <div class="telemetry-val {risk_class}">{risk}</div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-
-# -------------------------------------------------------------
-# 5. XỬ LÝ TRẠNG THÁI HIỂN THỊ TRUNG TÂM (ĐÃ XÓA DEMO MẶC ĐỊNH)
-# -------------------------------------------------------------
-pipeline = DrivingPerceptionPipeline(fps=30)
-
-# KHI CHƯA CÓ VIDEO TẢI LÊN VÀ KHÔNG CHỌN SAMPLE:
-if uploaded_file is None and not use_sample:
-    # 1. Màn hình giữa: Trạng thái chờ Standby sạch sẽ (Không hiển thị ảnh demo)
-    video_placeholder.markdown("""
-    <div class="video-standby-viewport">
-        <div class="standby-icon">📹</div>
-        <div class="standby-title">NO VIDEO STREAM LOADED</div>
-        <div class="standby-desc">
-            Vùng kéo-thả bên trái hỗ trợ kéo thả trực tiếp file <b>.mp4</b>, <b>.avi</b>, <b>.mov</b>.<br>
-            Hãy kéo thả video hành trình vào ô <b>Controls</b> để bắt đầu.
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
-
-    # 2. Cột phải & Telemetry: Hiển thị trạng thái Standby
-    render_hud_cards(
-        ego_lane="--",
-        lead_dist="--",
-        lead_alert="Standby",
-        signal="--",
-        ped_hazard="--",
-        is_amber=False
-    )
-    standby_json = {
-        "status": "STANDBY",
-        "message": "Waiting for dashcam video stream input...",
-        "controls": "Drag & drop video into left panel"
-    }
-    render_terminal_json(standby_json)
-    render_telemetry_bar(speed="--", gap="--", ttc="--", risk="STANDBY")
-
-    # Nếu người dùng bấm Start khi chưa có video
+if uploaded_file is None:
     if start_btn:
-        st.warning("⚠️ Vui lòng kéo & thả hoặc tải lên file video hành trình (.mp4) trước khi bấm 'Start Analysis'!")
+        st.toast("Vui lòng tải lên video hành trình trước khi bấm phân tích!", icon="🚨")
+        no_video_alert_placeholder.markdown("""<div class="custom-danger-alert"><div class="alert-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div><div class="alert-title">CHƯA CÓ NGUỒN VIDEO ĐẦU VÀO</div><div class="alert-desc">Vui lòng tải video hành trình (<code>.mp4</code>, <code>.avi</code>, <code>.mov</code>) ở ô trên trước khi bắt đầu.</div></div></div>""", unsafe_allow_html=True)
+        render_standby_viewport(video_placeholder, is_warning=True)
+        render_cockpit_telemetry(
+            telemetry_placeholder,
+            speed="--",
+            lead_dist="--",
+            ttc="--",
+            risk="STANDBY",
+            ego_lane="Ego Lane (Làn chính)",
+            signal="Clear",
+            ped_hazard="0 Sidewalk (Safe)",
+            lead_id=None
+        )
+        ready_json = {
+            "status": "INPUT_REQUIRED",
+            "warning": "No dashcam video stream currently loaded.",
+            "action": "Kéo thả video vào ô trên và nhấn 'BẮT ĐẦU PHÂN TÍCH'."
+        }
+        render_terminal_json(terminal_placeholder, ready_json)
+    else:
+        render_standby_viewport(video_placeholder, is_warning=False)
+        render_cockpit_telemetry(
+            telemetry_placeholder,
+            speed="--",
+            lead_dist="--",
+            ttc="--",
+            risk="STANDBY",
+            ego_lane="Ego Lane (Làn chính)",
+            signal="Standby",
+            ped_hazard="0 Sidewalk (Safe)",
+            lead_id=None
+        )
+        ready_json = {
+            "status": "STANDBY",
+            "message": "Waiting for dashcam video stream input...",
+            "models": {
+                "detector": "YOLOv12-L",
+                "segmenter": f"SegFormer {model_status['segformer']['backbone']}"
+            },
+            "supported_codecs": ["H.264", "MPEG-4", "HEVC"]
+        }
+        render_terminal_json(terminal_placeholder, ready_json)
 
-# KHI ĐÃ TẢI VIDEO LÊN (HOẶC CHỌN SAMPLE)
 else:
-    # Trường hợp 1: Người dùng đã kéo thả file video
-    if uploaded_file is not None:
+    file_sig = f"{uploaded_file.name}_{uploaded_file.size}"
+
+    if st.session_state.get("uploaded_sig") != file_sig:
         tfile = tempfile.NamedTemporaryFile(delete=False, suffix=".mp4")
-        tfile.write(uploaded_file.read())
+        uploaded_file.seek(0)
+        shutil.copyfileobj(uploaded_file, tfile, length=16 * 1024 * 1024)
         tfile.flush()
-        cap = cv2.VideoCapture(tfile.name)
-        
-        # Đọc trước frame 0 để hiển thị preview video của người dùng
-        ret, first_frame = cap.read()
-        cap.release()
+        tfile.close()
 
-        if ret and first_frame is not None:
-            preview_resized = cv2.resize(first_frame, (960, 540))
-            if not start_btn:
-                video_placeholder.image(cv2.cvtColor(preview_resized, cv2.COLOR_BGR2RGB), use_container_width=True)
-                render_hud_cards(
-                    ego_lane="Lane 2 (Center)",
-                    lead_dist="READY",
-                    lead_alert="Video loaded",
-                    signal="READY",
-                    ped_hazard="Ready to scan",
-                    is_amber=False
-                )
-                ready_json = {
-                    "status": "VIDEO_LOADED",
-                    "file_name": uploaded_file.name,
-                    "file_size_mb": round(uploaded_file.size / (1024 * 1024), 2),
-                    "action": "Click 'Start Analysis' to process"
-                }
-                render_terminal_json(ready_json)
-                render_telemetry_bar(speed=0, gap="--", ttc="--", risk="READY")
+        # Trích xuất thông số và khung hình Poster đầu tiên tức thì (tránh đẩy lại cả file 4K 500MB qua mạng)
+        cap_info = cv2.VideoCapture(tfile.name)
+        in_w = int(cap_info.get(cv2.CAP_PROP_FRAME_WIDTH))
+        in_h = int(cap_info.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        in_fps = round(cap_info.get(cv2.CAP_PROP_FPS) or 24.0, 1)
+        in_frames = int(cap_info.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+        ret_p, first_f = cap_info.read()
+        cap_info.release()
 
-        # KHI BẤM START ANALYSIS TRÊN VIDEO TẢI LÊN
-        if start_btn:
-            pipeline.reset()
-            cap = cv2.VideoCapture(tfile.name)
-            frames_source = []
-            while cap.isOpened():
-                r, f = cap.read()
-                if not r:
+        poster_b64 = None
+        if ret_p and first_f is not None:
+            if first_f.shape[1] > 960:
+                p_scale = 960.0 / first_f.shape[1]
+                first_f = cv2.resize(first_f, (960, max(2, int(first_f.shape[0] * p_scale))), interpolation=cv2.INTER_AREA)
+            _, p_buf = cv2.imencode('.jpg', first_f, [int(cv2.IMWRITE_JPEG_QUALITY), 82])
+            poster_b64 = base64.b64encode(p_buf.tobytes()).decode('ascii')
+
+        st.session_state.uploaded_sig = file_sig
+        st.session_state.uploaded_temp_path = tfile.name
+        st.session_state.uploaded_meta = (in_w, in_h, in_fps, in_frames, poster_b64)
+        st.session_state.analyzed_video_path = None
+        st.session_state.conclusion_json = None
+        st.session_state.conclusion_info = None
+        st.session_state.conclusion_telemetry = None
+
+    input_video_path = st.session_state.uploaded_temp_path
+
+    # Nếu đã phân tích xong video này và người dùng không bấm Start lại
+    if not start_btn and st.session_state.get("analyzed_video_path") and os.path.exists(st.session_state.analyzed_video_path):
+        video_placeholder.video(st.session_state.analyzed_video_path, autoplay=True)
+        if st.session_state.get("conclusion_json") and st.session_state.get("conclusion_info"):
+            c_tel = st.session_state.get("conclusion_telemetry", {})
+            render_slim_progress(
+                progress_placeholder,
+                c_tel.get("total_frames", 100),
+                c_tel.get("total_frames", 100),
+                fps_val=c_tel.get("out_fps", 30.0),
+                completed=True
+            )
+            render_cockpit_telemetry(
+                telemetry_placeholder,
+                speed=c_tel.get("avg_speed", 34),
+                lead_dist=c_tel.get("min_gap", "Clear"),
+                ttc=c_tel.get("min_ttc", "Safe"),
+                ego_lane="Ego Lane (Làn chính)",
+                signal=c_tel.get("signal_summary", "Clear"),
+                ped_hazard=c_tel.get("ped_summary", "0 Sidewalk (Safe)"),
+                lead_id=c_tel.get("min_gap_id", None),
+                env_info=c_tel.get("env_summary", "Nắng ráo"),
+                is_trip_summary=True,
+                safe_ratio_pct=c_tel.get("safe_pct", 100.0)
+            )
+            render_terminal_json(
+                terminal_placeholder,
+                st.session_state.conclusion_json,
+                conclusion_info=st.session_state.conclusion_info
+            )
+    elif not start_btn:
+        meta = st.session_state.get("uploaded_meta")
+        if meta:
+            in_w, in_h, in_fps, in_frames, poster_b64 = meta
+        else:
+            cap_info = cv2.VideoCapture(input_video_path)
+            in_w = int(cap_info.get(cv2.CAP_PROP_FRAME_WIDTH))
+            in_h = int(cap_info.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            in_fps = round(cap_info.get(cv2.CAP_PROP_FPS) or 24.0, 1)
+            in_frames = int(cap_info.get(cv2.CAP_PROP_FRAME_COUNT) or 0)
+            cap_info.release()
+            poster_b64 = None
+
+        if poster_b64:
+            video_placeholder.markdown(
+                f'<img class="live-stream-frame" src="data:image/jpeg;base64,{poster_b64}" />',
+                unsafe_allow_html=True
+            )
+        else:
+            video_placeholder.video(input_video_path)
+
+        render_cockpit_telemetry(
+            telemetry_placeholder,
+            speed=0,
+            lead_dist="--",
+            ttc="--",
+            risk="SAFE",
+            ego_lane="Ego Lane (Làn chính)",
+            signal="Ready",
+            ped_hazard="0 Sidewalk (Safe)",
+            lead_id=None
+        )
+        ready_json = {
+            "status": "VIDEO_READY",
+            "file_name": uploaded_file.name,
+            "resolution": f"{in_w}x{in_h}",
+            "fps": in_fps,
+            "total_frames": in_frames,
+            "action": "Nhấn 'BẮT ĐẦU PHÂN TÍCH' để chạy Pipeline"
+        }
+        render_terminal_json(terminal_placeholder, ready_json)
+
+    # -------------------------------------------------------------
+    # 6. KHI BẤM START ANALYSIS
+    # -------------------------------------------------------------
+    if start_btn:
+        old_out = st.session_state.get("analyzed_video_path")
+        if old_out and os.path.exists(old_out):
+            try:
+                os.remove(old_out)
+            except Exception:
+                pass
+
+        pipeline.reset()
+        cap = cv2.VideoCapture(input_video_path)
+        total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+        orig_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        orig_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps_source = cap.get(cv2.CAP_PROP_FPS)
+        if not fps_source or fps_source <= 0 or np.isnan(fps_source):
+            fps_source = 24.0
+
+        if total_frames <= 0:
+            st.error("Không thể đọc khung hình nào từ video tải lên.")
+            st.stop()
+
+        # TỰ ĐỘNG THÍCH ỨNG ĐỘ PHÂN GIẢI qHD 960x540 (16:9) & NHỊP KHUNG HÌNH SIÊU TỐC
+        if orig_w > 960 or orig_h > 540:
+            scale = min(960.0 / orig_w, 540.0 / orig_h)
+            target_w = int(round(orig_w * scale / 2.0) * 2)
+            target_h = int(round(orig_h * scale / 2.0) * 2)
+        else:
+            target_w = max(2, (orig_w // 2) * 2)
+            target_h = max(2, (orig_h // 2) * 2)
+        interp_mode = cv2.INTER_LINEAR
+
+        frame_stride = 2 if fps_source >= 45.0 else 1
+        out_fps = fps_source / frame_stride
+        effective_total = max(1, (total_frames + frame_stride - 1) // frame_stride)
+        pipeline.fps = out_fps
+        pipeline.engine.fps = out_fps
+
+        det_step = 3 if has_cuda else 4
+        seg_step = 6 if has_cuda else 8
+
+        out_processed_path = os.path.join(tempfile.gettempdir(), f"adas_analyzed_{int(time.time())}.mp4")
+        video_writer = cv2.VideoWriter(
+            out_processed_path,
+            cv2.CAP_MSMF,
+            cv2.VideoWriter_fourcc(*'H264'),
+            float(out_fps),
+            (target_w, target_h)
+        )
+        if not video_writer.isOpened():
+            video_writer = cv2.VideoWriter(
+                out_processed_path,
+                cv2.VideoWriter_fourcc(*'avc1'),
+                float(out_fps),
+                (target_w, target_h)
+            )
+        if not video_writer.isOpened():
+            video_writer = cv2.VideoWriter(
+                out_processed_path,
+                cv2.VideoWriter_fourcc(*'mp4v'),
+                float(out_fps),
+                (target_w, target_h)
+            )
+        try:
+            video_writer.set(cv2.VIDEOWRITER_PROP_QUALITY, 90)
+        except Exception:
+            pass
+
+        raw_queue = queue.Queue(maxsize=24)
+        writer_queue = queue.Queue(maxsize=32)
+
+        def _async_frame_reader(capture, rq, stride):
+            raw_idx = 0
+            while capture.isOpened():
+                if stride > 1 and (raw_idx % stride != 0):
+                    if not capture.grab():
+                        break
+                    raw_idx += 1
+                    continue
+                ret_r, raw_f = capture.read()
+                if not ret_r:
                     break
-                frames_source.append(f)
-            cap.release()
+                raw_idx += 1
+                if raw_f.shape[1] == target_w and raw_f.shape[0] == target_h:
+                    rq.put(raw_f)
+                else:
+                    crisp_f = cv2.resize(raw_f, (target_w, target_h), interpolation=interp_mode)
+                    rq.put(crisp_f)
+            capture.release()
+            rq.put(None)
 
-            total_frames = len(frames_source)
-            if total_frames == 0:
-                st.error("Không thể đọc khung hình nào từ video tải lên.")
-                st.stop()
+        def _async_video_writer(writer, wq):
+            while True:
+                item_f = wq.get()
+                if item_f is None:
+                    break
+                if writer.isOpened():
+                    writer.write(item_f)
+            if writer.isOpened():
+                writer.release()
 
-            for idx, f in enumerate(frames_source):
-                resized = cv2.resize(f, (960, 540))
-                annotated, log = pipeline.run_inference(
-                    frame=resized,
-                    frame_idx=idx,
-                    weather="Nang rao",
-                    show_masks=toggle_drivable,
-                    show_lanes=toggle_lanes,
-                    show_boxes=toggle_boxes,
-                    show_graph=toggle_graph
-                )
+        reader_thread = threading.Thread(target=_async_frame_reader, args=(cap, raw_queue, frame_stride), daemon=True)
+        writer_thread = threading.Thread(target=_async_video_writer, args=(video_writer, writer_queue), daemon=True)
+        reader_thread.start()
+        writer_thread.start()
 
-                video_placeholder.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
-                progress_placeholder.progress((idx + 1) / total_frames, text=f"Processing Frame {idx + 1}/{total_frames} (30 FPS)")
+        idx = 0
+        last_log = {}
+        last_render_t = 0.0
 
-                summary = log.get("summary", {})
-                risk_lvl = summary.get("risk_level", "An toan")
-                is_amber = (risk_lvl in ["Chu y", "Nguy hiem"])
+        trip_veh_counts = []
+        trip_speeds = []
+        trip_safe_frames = 0
+        trip_caution_frames = 0
+        trip_tl_frames = 0
+        trip_ped_road_frames = 0
+        trip_max_peds = 0
+        trip_min_gap = 999.0
+        trip_min_gap_id = None
+        trip_min_ttc = 999.0
+        in_caution_streak = False
+        trip_caution_events = 0
+        latest_env_display = "Nắng ráo"
 
-                render_hud_cards(
-                    ego_lane="Lane 2 (Center)",
-                    lead_dist="NEAR" if is_amber else "NORMAL",
-                    lead_alert="Caution in amber" if is_amber else "Safe",
-                    signal="RED (Ahead)" if summary.get("traffic_light_ahead") else "CLEAR",
-                    ped_hazard=f"{summary.get('pedestrians_on_road', 0)} on Road (Alert)" if summary.get('pedestrians_on_road', 0) > 0 else "None",
-                    is_amber=is_amber
-                )
-                render_terminal_json(log)
-                render_telemetry_bar(
-                    speed=42,
-                    gap=12.5 if is_amber else 22.0,
-                    ttc=1.4 if is_amber else 3.5,
-                    risk="CAUTION" if is_amber else "SAFE"
-                )
-                time.sleep(0.03)
+        while True:
+            small_f = raw_queue.get()
+            if small_f is None:
+                break
 
-            progress_placeholder.empty()
-            st.toast("🎉 Phân tích video thành công!", icon="✅")
-
-    # Trường hợp 2: Người dùng tích chọn 'Sử dụng video mẫu'
-    elif use_sample:
-        scenario_data = get_demo_scenario_data(num_frames=90, target_w=960, target_h=540)
-        
-        if not start_btn:
-            # Hiển thị preview frame 0 của sample
-            init_item = scenario_data[0]
-            annotated_preview = pipeline.draw_hud_visuals(
-                frame=init_item["frame"],
-                detections=init_item["detections"],
-                masks=init_item["masks"],
-                context_log=init_item["telemetry"],
+            ann_f, log = pipeline.run_inference(
+                frame=small_f,
+                frame_idx=idx,
+                weather=selected_weather,
                 show_masks=toggle_drivable,
                 show_lanes=toggle_lanes,
                 show_boxes=toggle_boxes,
-                show_graph=toggle_graph
+                show_graph=toggle_graph,
+                seg_interval=seg_step,
+                det_interval=det_step
             )
-            video_placeholder.image(cv2.cvtColor(annotated_preview, cv2.COLOR_BGR2RGB), use_container_width=True)
-            render_hud_cards(
-                ego_lane="Lane 2 (Center)",
-                lead_dist="NEAR",
-                lead_alert="Caution in amber",
-                signal="RED (Ahead)",
-                ped_hazard="1 on Road (Alert)",
-                is_amber=True
+            last_log = log
+            writer_queue.put(ann_f)
+
+            # Tích lũy số liệu ngữ cảnh theo từng frame
+            cur_sum = log.get("summary", {})
+            cur_objs = log.get("objects", [])
+            v_cnt = int(cur_sum.get("total_vehicles", 0))
+            p_cnt = int(cur_sum.get("total_pedestrians", 0))
+            pr_cnt = int(cur_sum.get("pedestrians_on_road", 0))
+            r_lvl = str(cur_sum.get("risk_level", "SAFE"))
+            is_emergency = bool(cur_sum.get("emergency_brake", False))
+            cut_in_now = bool(cur_sum.get("cut_in_detected", False))
+
+            trip_veh_counts.append(v_cnt)
+            if p_cnt > trip_max_peds:
+                trip_max_peds = p_cnt
+            if pr_cnt > 0:
+                trip_ped_road_frames += 1
+            if cur_sum.get("traffic_light_ahead"):
+                trip_tl_frames += 1
+
+            if is_emergency or r_lvl in ["DANGER", "Nguy hiem", "Khan cap"]:
+                trip_caution_frames += 1
+                if not in_caution_streak:
+                    trip_caution_events += 1
+                    in_caution_streak = True
+            elif r_lvl in ["CAUTION", "Chu y", "Caution"]:
+                trip_caution_frames += 1
+                if not in_caution_streak:
+                    trip_caution_events += 1
+                    in_caution_streak = True
+            else:
+                trip_safe_frames += 1
+                in_caution_streak = False
+
+            # Hiển thị trực tiếp khung hình video (tối ưu băng thông WebSocket 13-14 FPS mượt)
+            now_t = time.time()
+            if (now_t - last_render_t >= 0.075) or (idx + 1 >= effective_total):
+                _, jpeg_buf = cv2.imencode('.jpg', ann_f, [int(cv2.IMWRITE_JPEG_QUALITY), 76])
+                b64_frame = base64.b64encode(jpeg_buf.tobytes()).decode('ascii')
+                video_placeholder.markdown(
+                    f'<img class="live-stream-frame" src="data:image/jpeg;base64,{b64_frame}" />',
+                    unsafe_allow_html=True
+                )
+                last_render_t = now_t
+
+            # Cập nhật Thanh tiến độ, Telemetry Hub Ribbon & Nhật ký JSON mỗi 12 frames
+            if idx % 12 == 0 or (idx + 1 >= effective_total):
+                fps_val = float(cur_sum.get("fps", 30.0))
+                render_slim_progress(progress_placeholder, idx + 1, effective_total, fps_val=fps_val)
+
+                vehicles = [o for o in cur_objs if o.get("class") == "Vehicle"]
+                lead_veh = None
+                if vehicles:
+                    vehicles_sorted = sorted(
+                        vehicles,
+                        key=lambda v: (
+                            1 if "cung lan" in str(v.get("lane_position", "")).lower() else 0,
+                            1 if v.get("in_drivable") else 0,
+                            v.get("bbox", [0, 0, 0, 0])[3]
+                        ),
+                        reverse=True
+                    )
+                    lead_veh = vehicles_sorted[0]
+
+                lead_id_val = lead_veh.get("id", 1) if lead_veh else None
+
+                if lead_veh:
+                    by2 = lead_veh.get("bbox", [0, 0, 0, int(target_h * 0.7)])[3]
+                    ratio_y = min(0.96, max(0.30, by2 / float(max(1, target_h))))
+                    gap_val = round(max(3.5, (1.02 - ratio_y) * 55.0), 1)
+                    raw_ttc = lead_veh.get("ttc")
+                    lead_ttc_val = raw_ttc if raw_ttc is not None else (round(max(1.4, gap_val / 5.5), 1) if (is_emergency or r_lvl != "SAFE") else 4.8)
+                    ego_speed_val = max(0 if is_emergency else 18, min(48, int(round(16 + gap_val * 0.85 - len(vehicles) * 0.7))))
+
+                    if gap_val < trip_min_gap:
+                        trip_min_gap = gap_val
+                        trip_min_gap_id = lead_id_val
+                    if isinstance(lead_ttc_val, (int, float)) and float(lead_ttc_val) < trip_min_ttc:
+                        trip_min_ttc = float(lead_ttc_val)
+                else:
+                    gap_val = "Clear"
+                    lead_ttc_val = "Safe"
+                    ego_speed_val = 0 if is_emergency else (32 if r_lvl != "SAFE" else 45)
+
+                trip_speeds.append(ego_speed_val)
+
+                # Phân tích hiển thị màu sắc đèn giao thông
+                tl_col = cur_sum.get("traffic_light_color", "None")
+                sig_raw = str(cur_sum.get("traffic_light_distance", "")).lower()
+                sig_dist = "Near" if "gan" in sig_raw else ("Mid" if "vua" in sig_raw else ("Far" if "xa" in sig_raw else "Detected"))
+                if tl_col == "Red":
+                    signal_str = f"🔴 RED ({sig_dist})"
+                elif tl_col == "Yellow":
+                    signal_str = f"🟡 YELLOW ({sig_dist})"
+                elif tl_col == "Green":
+                    signal_str = f"🟢 GREEN ({sig_dist})"
+                elif cur_sum.get("traffic_light_ahead"):
+                    signal_str = f"Detected ({sig_dist})"
+                else:
+                    signal_str = "Clear"
+
+                peds_on_road = cur_sum.get("pedestrians_on_road", 0)
+                tot_peds = cur_sum.get("total_pedestrians", 0)
+                if peds_on_road > 0:
+                    ped_str = f"{peds_on_road} on Road (Warning!)"
+                elif tot_peds > 0:
+                    ped_str = f"{tot_peds} Sidewalk (Safe)"
+                else:
+                    ped_str = "0 Sidewalk (Safe)"
+
+                # Xác định nhãn rủi ro hiển thị buồng lái
+                if is_emergency:
+                    cockpit_risk = "EMERGENCY"
+                elif cut_in_now or r_lvl == "CAUTION":
+                    cockpit_risk = "CAUTION"
+                elif r_lvl == "DANGER":
+                    cockpit_risk = "DANGER"
+                else:
+                    cockpit_risk = "SAFE"
+
+                # Trạng thái môi trường & ống kính camera
+                env_dict = log.get("environment", {})
+                env_weather_txt = env_dict.get("weather", "Nắng ráo")
+                cam_status_txt = env_dict.get("camera_status", "")
+                if "mo" in cam_status_txt.lower():
+                    env_display_str = f"{env_weather_txt} (Kính mờ)"
+                else:
+                    env_display_str = env_weather_txt
+                latest_env_display = env_display_str
+
+                render_cockpit_telemetry(
+                    telemetry_placeholder,
+                    speed=ego_speed_val,
+                    lead_dist=gap_val,
+                    ttc=lead_ttc_val,
+                    risk=cockpit_risk,
+                    ego_lane="Ego Lane (Làn chính)",
+                    signal=signal_str,
+                    ped_hazard=ped_str,
+                    lead_id=lead_id_val,
+                    env_info=env_display_str,
+                    cut_in_alert=cut_in_now
+                )
+
+                # Summary strip văn phong chuẩn pro_video_change_toggle_ui
+                avg_v_now = round(float(np.mean(trip_veh_counts[-15:])) if trip_veh_counts else 3.5, 1)
+                dens_desc = "Đô thị mật độ trung bình" if avg_v_now >= 3.0 else "Làn đường thông thoáng"
+                if is_emergency:
+                    lead_note = "<b style='color:#dc2626;'>🚨 PHANH KHẨN CẤP (AEB)! Phát hiện nguy cơ đâm va trực diện!</b>"
+                elif cut_in_now:
+                    lead_note = "<b style='color:#d97706;'>⚠️ CẢNH BÁO TẠT ĐẦU: Xe làn bên tạt ngang trước đầu xe!</b>"
+                elif lead_veh:
+                    lead_note = f"Phát hiện <b>Lead Vehicle #{lead_id_val}</b> cùng làn ({gap_val}m • TTC {lead_ttc_val}s)."
+                else:
+                    lead_note = "Không có xe dẫn đầu trực diện."
+                summary_strip_text = f"{dens_desc} ({avg_v_now} xe/frame). {lead_note}"
+
+                if idx % 18 == 0:
+                    render_terminal_json(terminal_placeholder, log, summary_text=summary_strip_text)
+
+            idx += 1
+
+        writer_queue.put(None)
+        writer_thread.join(timeout=15.0)
+
+        # -------------------------------------------------------------
+        # 7. TỔNG HỢP KẾT LUẬN NGỮ CẢNH TOÀN VIDEO
+        # -------------------------------------------------------------
+        analyzed_count = max(1, idx)
+        avg_veh = round(float(np.mean(trip_veh_counts)) if trip_veh_counts else 0.0, 1)
+        peak_veh = int(max(trip_veh_counts)) if trip_veh_counts else 0
+        avg_spd = int(round(float(np.mean(trip_speeds)))) if trip_speeds else 34
+        safe_pct = round((trip_safe_frames / analyzed_count) * 100.0, 1)
+        duration_s = round(analyzed_count / max(1.0, float(out_fps)), 1)
+
+        if avg_veh >= 6.0:
+            density_txt = f"Cao ({avg_veh} xe/frame)"
+            density_short = "Đô thị mật độ cao"
+        elif avg_veh >= 2.5:
+            density_txt = f"Trung binh ({avg_veh} xe/frame)"
+            density_short = "Đô thị mật độ trung bình"
+        else:
+            density_txt = f"Thap ({avg_veh} xe/frame)"
+            density_short = "Đường thông thoáng"
+
+        min_gap_out = round(trip_min_gap, 1) if trip_min_gap < 900.0 else "Clear"
+        min_ttc_out = round(trip_min_ttc, 1) if trip_min_ttc < 900.0 else "Stable"
+
+        if safe_pct >= 85.0 and trip_caution_events == 0:
+            overall_eval = "An toàn (Safe)"
+            eval_label_ui = "Đánh giá: An toàn"
+            eval_color_ui = "#059669"
+            adas_rec = "Hành trình thông thoáng, duy trì tốc độ và khoảng cách ổn định trên làn chính"
+            summary_html = (
+                f"{density_short} (trung bình <b>{avg_veh} xe/frame</b>). "
+                f"Làn đường thông thoáng và an toàn <b>{safe_pct}%</b> thời lượng; "
+                f"không phát hiện xung đột nguy hiểm."
             )
-            sample_init_json = {
-                "name": "Lane2Centers",
-                "Lead Vehicle": {"TrafficSignal": "Red", "attens": 30},
-                "Telemetry Status": {"Distance": "NEAR", "PedestrianHazard": "1 on Road"}
-            }
-            render_terminal_json(sample_init_json)
-            render_telemetry_bar(speed=42, gap=12.5, ttc=1.4, risk="CAUTION")
+        else:
+            overall_eval = "Chú ý (Caution)" if safe_pct >= 60.0 else "Cảnh báo cao (High Risk)"
+            eval_label_ui = "Đánh giá: Cần chú ý" if safe_pct >= 60.0 else "Đánh giá: Cảnh báo cao"
+            eval_color_ui = "#d97706" if safe_pct >= 60.0 else "#dc2626"
+            adas_rec = "Duy trì khoảng cách an toàn và chủ động giảm tốc độ khi gần xe trước"
+            ttc_note = f" (TTC min <b>{min_ttc_out}s</b>)" if isinstance(min_ttc_out, float) else ""
+            summary_html = (
+                f"{density_short} (trung bình <b>{avg_veh} xe/frame</b>). "
+                f"Làn đường an toàn <b>{safe_pct}%</b> thời lượng; phát hiện <b>{trip_caution_events} tình huống</b> "
+                f"khoảng cách gần{ttc_note} cần giữ khoảng cách an toàn."
+            )
 
-        if start_btn:
-            pipeline.reset()
-            total_frames = len(scenario_data)
-            for idx, item in enumerate(scenario_data):
-                frame = item["frame"]
-                detections = item["detections"]
-                masks = item["masks"]
-                telemetry = item["telemetry"]
-                terminal_json = item["terminal_json"]
+        conclusion_json = {
+            "report_type": "VIDEO_CONTEXT_CONCLUSION",
+            "total_frames_analyzed": analyzed_count,
+            "duration_sec": duration_s,
+            "overall_assessment": overall_eval,
+            "traffic_environment": {
+                "environment_condition": latest_env_display,
+                "density_level": density_txt,
+                "peak_vehicles": peak_veh,
+                "pedestrian_encounters": trip_max_peds,
+                "traffic_light_frames": trip_tl_frames
+            },
+            "safety_metrics": {
+                "safe_frame_ratio": f"{safe_pct}%",
+                "caution_events": trip_caution_events,
+                "min_lead_distance_m": min_gap_out,
+                "min_ttc_sec": min_ttc_out
+            },
+            "adas_recommendation": adas_rec
+        }
+        conclusion_info = {
+            "total_frames": analyzed_count,
+            "eval_label": eval_label_ui,
+            "eval_color": eval_color_ui,
+            "summary_html": summary_html
+        }
+        sig_summary_str = f"Detected ({trip_tl_frames} frames)" if trip_tl_frames > 0 else "Clear (0 frames)"
+        ped_summary_str = f"{trip_ped_road_frames} Road Hazard" if trip_ped_road_frames > 0 else "0 Sidewalk (Safe)"
 
-                annotated = pipeline.draw_hud_visuals(
-                    frame=frame,
-                    detections=detections,
-                    masks=masks,
-                    context_log=telemetry,
-                    show_masks=toggle_drivable,
-                    show_lanes=toggle_lanes,
-                    show_boxes=toggle_boxes,
-                    show_graph=toggle_graph
-                )
+        st.session_state.analyzed_video_path = out_processed_path
+        st.session_state.last_log = last_log
+        st.session_state.conclusion_json = conclusion_json
+        st.session_state.conclusion_info = conclusion_info
+        st.session_state.conclusion_telemetry = {
+            "total_frames": analyzed_count,
+            "out_fps": float(out_fps),
+            "avg_speed": avg_spd,
+            "min_gap": min_gap_out,
+            "min_ttc": min_ttc_out,
+            "min_gap_id": trip_min_gap_id,
+            "safe_pct": safe_pct,
+            "signal_summary": sig_summary_str,
+            "ped_summary": ped_summary_str,
+            "env_summary": latest_env_display
+        }
 
-                video_placeholder.image(cv2.cvtColor(annotated, cv2.COLOR_BGR2RGB), use_container_width=True)
-                progress_placeholder.progress((idx + 1) / total_frames, text=f"Analyzing Sample Frame {idx + 1}/{total_frames} (30 FPS)")
+        render_slim_progress(progress_placeholder, analyzed_count, analyzed_count, fps_val=float(out_fps), completed=True)
+        render_cockpit_telemetry(
+            telemetry_placeholder,
+            speed=avg_spd,
+            lead_dist=min_gap_out,
+            ttc=min_ttc_out,
+            ego_lane="Ego Lane (Làn chính)",
+            signal=sig_summary_str,
+            ped_hazard=ped_summary_str,
+            lead_id=trip_min_gap_id,
+            env_info=latest_env_display,
+            is_trip_summary=True,
+            safe_ratio_pct=safe_pct
+        )
+        render_terminal_json(terminal_placeholder, conclusion_json, conclusion_info=conclusion_info)
+        st.toast("Hoàn tất phân tích và tổng hợp ngữ cảnh hành trình!", icon="✅")
 
-                lead_data = telemetry["lead_vehicle"]
-                is_amber = (lead_data["alert"] == "Caution in amber")
-
-                render_hud_cards(
-                    ego_lane=telemetry["ego_lane"],
-                    lead_dist=lead_data["distance"],
-                    lead_alert=lead_data["alert"],
-                    signal=telemetry["traffic_signal"],
-                    ped_hazard=telemetry["pedestrian_hazard"],
-                    is_amber=is_amber
-                )
-                render_terminal_json(terminal_json)
-                render_telemetry_bar(
-                    speed=telemetry["speed_kmh"],
-                    gap=lead_data["gap_meters"],
-                    ttc=lead_data["ttc_sec"],
-                    risk="CAUTION" if is_amber else "SAFE"
-                )
-                time.sleep(0.035)
-
-            progress_placeholder.empty()
-            st.toast("🎉 Hoàn tất phân tích video mẫu thành công!", icon="✅")
+        if os.path.exists(out_processed_path) and os.path.getsize(out_processed_path) > 1000:
+            video_placeholder.video(out_processed_path, autoplay=True)

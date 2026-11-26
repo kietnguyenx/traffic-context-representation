@@ -1,6 +1,6 @@
 """
 Kiểm tra tính đúng đắn của nhãn và thống kê phân bố lớp:
-1. Vẽ bounding box trên ảnh gốc dựa trên nhãn YOLOv5 và hiển thị ảnh để kiểm tra trực quan.
+1. Vẽ bounding box trên ảnh gốc dựa trên nhãn YOLO và hiển thị ảnh để kiểm tra trực quan.
 2. Đếm số lượng đối tượng mỗi class để đánh giá mất cân bằng dữ liệu.
 """
 import os
@@ -10,21 +10,33 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+if hasattr(sys.stdout, 'reconfigure'):
+    try:
+        sys.stdout.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # Thêm thư mục gốc vào path để import các mô-đun từ utils
 current_dir = Path(__file__).resolve().parent
 project_root = current_dir.parent
 sys.path.append(str(project_root))
 
-from utils.label_mapper import (
-    YOLO_DETECTION_CLASS_ID_TO_NAME,
-    SEG_COLOR_MAPPING
-)
+try:
+    from src.utils.label_mapper import (
+        YOLO_DETECTION_CLASS_ID_TO_NAME,
+        SEG_COLOR_MAPPING
+    )
+except ImportError:
+    from utils.label_mapper import (
+        YOLO_DETECTION_CLASS_ID_TO_NAME,
+        SEG_COLOR_MAPPING
+    )
 
 # Màu đại diện Bbox (BGR cho OpenCV)
 BOX_COLORS = {
-    0: (0, 0, 255),      # Red cho vehicle
-    1: (0, 255, 0),      # Green cho pedestrian
-    2: (255, 0, 0),      # Blue cho bicycle/motorcycle
+    0: (0, 0, 255),      # Red cho Vehicle
+    1: (0, 255, 0),      # Green cho Pedestrian
+    2: (0, 255, 255),    # Yellow cho Traffic Light
 }
 
 
@@ -107,6 +119,10 @@ def visualize_random_samples(image_dir, label_dir, mask_dir=None, output_vis_dir
     os.makedirs(output_vis_dir, exist_ok=True)
     valid_exts = {".jpg", ".jpeg", ".png"}
 
+    if not os.path.exists(image_dir):
+        print(f"[CẢNH BÁO] Không tìm thấy thư mục ảnh: {image_dir}")
+        return
+
     image_files = [f for f in os.listdir(image_dir) if os.path.splitext(f)[1].lower() in valid_exts]
     if not image_files:
         print(f"Không tìm thấy ảnh trong thư mục: {image_dir}")
@@ -138,7 +154,7 @@ def visualize_random_samples(image_dir, label_dir, mask_dir=None, output_vis_dir
 
 def calculate_class_distribution(label_dir):
     """
-    Thống kê tổng số lượng bounding box theo từng lớp nhãn (kể cả class không hợp lệ).
+    Thống kê tổng số lượng bounding box theo từng lớp nhãn.
     """
     stats = {class_id: 0 for class_id in YOLO_DETECTION_CLASS_ID_TO_NAME.keys()}
     total_boxes = 0
@@ -175,7 +191,6 @@ def calculate_class_distribution(label_dir):
 
 
 if __name__ == "__main__":
-    # Thay đổi các đường dẫn này theo dataset thực tế của bạn
     DATASET_ROOT = project_root / "data"
     IMAGE_DIR = DATASET_ROOT / "images" / "train"
     LABEL_DIR = DATASET_ROOT / "labels" / "train"
@@ -195,4 +210,6 @@ if __name__ == "__main__":
             num_samples=10
         )
     else:
-        print("Đường dẫn ảnh hoặc nhãn không tồn tại, vui lòng kiểm tra lại cấu hình.")
+        print("[THONG BAO] Thu muc du lieu train cuc bo 'data/' khong co san.")
+        print("           Du an da huan luyen xong va luu trong so san trong 'weights/'.")
+        print("           Co the chay Web Demo bang: .venv\\Scripts\\streamlit run src/app.py")

@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Traffic Context Representation | Real-Time ADAS</title>
+  <link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v=2" />
+
+  <!-- Enterprise Fonts (Inter + JetBrains Mono, graceful offline fallback) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet" />
+
+  <!-- Modular CSS Architecture (Ultra-Clean White Enterprise ADAS) -->
+  <link rel="stylesheet" href="/static/css/variables.css" />
+  <link rel="stylesheet" href="/static/css/base.css" />
+  <link rel="stylesheet" href="/static/css/sidebar.css" />
+  <link rel="stylesheet" href="/static/css/viewport.css" />
+  <link rel="stylesheet" href="/static/css/cockpit.css" />
+  <link rel="stylesheet" href="/static/css/json-inspector.css" />
+</head>
+<body>
+  <div class="app-shell">
+    <!-- ================================================================
+         1. TOP NAVIGATION BAR
+         ================================================================ -->
+    <header class="top-header" role="banner">
+      <div class="header-title">Traffic Context Representation</div>
+      <div class="header-status" id="header-status-pills">
+        <div class="status-dot-pill">
+          <span class="dot-amber" id="dot-yolo"></span>
+          <span id="label-yolo">YOLOv12-L</span>
+        </div>
+        <div class="status-dot-pill">
+          <span class="dot-amber" id="dot-segformer"></span>
+          <span id="label-segformer">SegFormer MiT-B2</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- ================================================================
+         2. TWO-COLUMN ENTERPRISE LAYOUT [~30% LEFT | ~70% RIGHT]
+         ================================================================ -->
+    <main class="dashboard-grid">
+      <!-- LEFT COLUMN: VIDEO CONTROLS + 4 AI LAYERS + REAL-TIME CONTEXT LOG -->
+      <aside class="col-left">
+        <!-- Input & AI Layer Controls Card -->
+        <section class="enterprise-card control-card" aria-label="Video input and AI display layer controls">
+          <div class="section-label">
+            <span>DASHCAM VIDEO INPUT</span>
+          </div>
+
+          <!-- Native HTML5 hidden file input (0ms response) -->
+          <input
+            type="file"
+            id="video-file-input"
+            accept=".mp4,.avi,.mov,.mkv,video/*"
+            hidden
+          />
+
+          <!-- State 1: Video Dropzone -->
+          <div
+            id="video-dropzone"
+            class="dropzone-container"
+            role="button"
+            tabindex="0"
+            aria-label="Drag and drop or click to select a video file"
+          >
+            <div class="dropzone-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="17 8 12 3 7 8" />
+                <line x1="12" y1="3" x2="12" y2="15" />
+              </svg>
+            </div>
+            <div class="dropzone-text">Drag &amp; drop or click to select video</div>
+            <div class="dropzone-sub">Supports MP4, AVI, MOV (Full HD &amp; 4K)</div>
+          </div>
+
+          <!-- State 2: File Ready Bar with Instant [✕] Remove Button -->
+          <div id="video-ready-bar" class="file-ready-bar is-hidden">
+            <div class="file-info-group">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#2563eb" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M23 7l-7 5 7 5V7z" />
+                <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+              </svg>
+              <span class="file-name" id="ready-file-name" title="">--</span>
+            </div>
+            <div class="file-ready-actions">
+              <span class="file-badge" id="ready-file-badge">Ready</span>
+              <button
+                type="button"
+                id="btn-clear-video"
+                class="btn-remove-video"
+                title="Remove loaded video"
+                aria-label="Remove loaded video"
+              >✕</button>
+            </div>
+          </div>
+
+          <!-- 4 AI Overlay Layers in 2x2 iOS Toggle Grid -->
+          <div class="section-label section-label-spaced">
+            <span>AI OVERLAY LAYERS</span>
+          </div>
+
+          <div class="toggles-grid">
+            <label class="ios-toggle-tile" for="toggle-boxes">
+              <span class="toggle-title">YOLO Boxes</span>
+              <span class="ios-switch">
+                <input type="checkbox" id="toggle-boxes" role="switch" checked />
+                <span class="ios-slider"></span>
+              </span>
+            </label>
+
+            <label class="ios-toggle-tile" for="toggle-drivable">
+              <span class="toggle-title">Drivable Area</span>
+              <span class="ios-switch">
+                <input type="checkbox" id="toggle-drivable" role="switch" checked />
+                <span class="ios-slider"></span>
+              </span>
+            </label>
+
+            <label class="ios-toggle-tile" for="toggle-lanes">
+              <span class="toggle-title">Lane Markings</span>
+              <span class="ios-switch">
+                <input type="checkbox" id="toggle-lanes" role="switch" checked />
+                <span class="ios-slider"></span>
+              </span>
+            </label>
+
+            <label class="ios-toggle-tile" for="toggle-graph">
+              <span class="toggle-title">Spatial Graph</span>
+              <span class="ios-switch">
+                <input type="checkbox" id="toggle-graph" role="switch" checked />
+                <span class="ios-slider"></span>
+              </span>
+            </label>
+          </div>
+
+          <!-- Auto Optical Environment Sensor Chip -->
+          <div class="auto-sensing-badge">
+            <div class="sensing-dot"></div>
+            <span>Environment Sensor: <b>AI Optical (Auto)</b></span>
+          </div>
+
+          <!-- Primary Start / Stop Analysis Button -->
+          <button type="button" id="btn-start-analysis" class="btn-primary-analysis">
+            START ANALYSIS
+          </button>
+
+          <!-- Danger Alert Banner when no video is selected -->
+          <div id="no-video-alert" class="custom-danger-alert is-hidden" role="alert">
+            <div class="alert-icon">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+            </div>
+            <div>
+              <div class="alert-title">NO VIDEO INPUT SOURCE</div>
+              <div class="alert-desc">
+                Please upload a dashcam video (<code>.mp4</code>, <code>.avi</code>, <code>.mov</code>) above before starting.
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Real-Time Context Log Card -->
+        <section class="context-log-card" id="context-log-card" aria-label="Real-time context log">
+          <div class="card-header-row">
+            <span class="section-label section-label-inline">REAL-TIME CONTEXT LOG</span>
+            <span class="frame-pill" id="json-status-badge">STANDBY</span>
+          </div>
+
+          <div class="summary-strip is-hidden" id="json-summary-strip"></div>
+
+          <div class="json-inspector-box">
+            <div class="json-scroll-viewport" id="json-scroll-viewport">
+              <div class="json-line-nums" id="json-line-nums">1</div>
+              <div class="json-code-content" id="json-code-content"></div>
+            </div>
+          </div>
+        </section>
+      </aside>
+
+      <!-- RIGHT COLUMN: 16:9 VIDEO STAGE + ADAS COCKPIT RIBBON DOCK -->
+      <section class="col-right">
+        <!-- Video Stage & Progress Bar Card -->
+        <div class="enterprise-card stage-card">
+          <div class="video-stage-wrapper">
+            <!-- 1. Standby Viewport -->
+            <div id="viewport-standby" class="video-standby-viewport">
+              <div class="standby-icon" id="standby-icon">
+                <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+                  <line x1="8" y1="21" x2="16" y2="21" />
+                  <line x1="12" y1="17" x2="12" y2="21" />
+                </svg>
+              </div>
+              <div class="standby-title" id="standby-title">NO VIDEO LOADED</div>
+              <div class="standby-desc" id="standby-desc">
+                Drag and drop a dashcam video file (<b>.mp4</b>, <b>.avi</b>, <b>.mov</b>) into the left control panel to start analysis.
+              </div>
+            </div>
+
+            <!-- 2. Preview Poster & Live Binary Stream -->
+            <img
+              id="live-stream-frame"
+              class="live-stream-frame is-hidden"
+              alt="Real-time ADAS perception frame"
+            />
+
+            <!-- 3. Post-Analysis H.264 Video Player -->
+            <video
+              id="analyzed-video-player"
+              class="live-stream-frame is-hidden"
+              controls
+              playsinline
+            ></video>
+          </div>
+
+          <!-- Slim Progress Bar -->
+          <div id="slim-progress-bar" class="slim-progress-bar is-hidden">
+            <span class="slim-progress-label" id="progress-label">Analysis Progress: Frame 0 / 0 (0%)</span>
+            <div class="slim-progress-track">
+              <div class="slim-progress-fill" id="progress-fill" style="width: 0%;"></div>
+            </div>
+            <span class="slim-progress-meta" id="progress-meta">00:00 / 00:00</span>
+          </div>
+        </div>
+
+        <!-- ADAS Cockpit Ribbon Dock -->
+        <div class="cockpit-ribbon-card" id="cockpit-ribbon-card">
+          <div class="metric-dock-grid">
+            <!-- Metric 1: Speed -->
+            <div class="dock-item">
+              <div class="dock-label">
+                <span id="lbl-speed">CURRENT SPEED</span>
+                <span id="tag-speed" class="val-blue">NOMINAL</span>
+              </div>
+              <div class="dock-value val-blue">
+                <span id="val-speed">--</span>
+                <span class="dock-unit">km/h</span>
+              </div>
+              <div class="dock-meter">
+                <div class="meter-fill" id="meter-speed" style="width: 0%; background: #2563eb;"></div>
+              </div>
+            </div>
+
+            <!-- Metric 2: Lead Vehicle Gap -->
+            <div class="dock-item">
+              <div class="dock-label">
+                <span id="lbl-lead">LEAD VEHICLE GAP</span>
+                <span id="tag-lead" style="color: #0284c7;">CLEAR</span>
+              </div>
+              <div class="dock-value">
+                <span id="val-gap">--</span>
+                <span class="dock-unit">m</span>
+              </div>
+              <div class="dock-meter">
+                <div class="meter-fill" id="meter-gap" style="width: 0%; background: #0284c7;"></div>
+              </div>
+            </div>
+
+            <!-- Metric 3: Time To Collision -->
+            <div class="dock-item">
+              <div class="dock-label">
+                <span id="lbl-ttc">TIME TO COLLISION</span>
+                <span id="tag-ttc" style="color: #d97706;">THRESHOLD &lt; 3.5S</span>
+              </div>
+              <div class="dock-value" id="wrap-ttc" style="color: #0f172a;">
+                <span id="val-ttc">--</span>
+                <span class="dock-unit">s</span>
+              </div>
+              <div class="dock-meter">
+                <div class="meter-fill" id="meter-ttc" style="width: 0%; background: #94a3b8;"></div>
+              </div>
+            </div>
+
+            <!-- Metric 4: Risk Assessment -->
+            <div class="dock-item">
+              <div class="dock-label">
+                <span id="lbl-risk">RISK ASSESSMENT</span>
+                <span id="tag-risk">ADAS FCW / AEB</span>
+              </div>
+              <div class="dock-value dock-value-risk" id="val-risk" style="color: #64748b;">
+                ○ STANDBY
+              </div>
+              <div class="dock-meter">
+                <div class="meter-fill" id="meter-risk" style="width: 0%; background: #94a3b8;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Sub-Status Bar -->
+          <div class="sub-status-bar">
+            <div class="status-item">
+              <span>Current Lane:</span>
+              <span class="status-val" id="sub-lane">Ego Lane (Center)</span>
+            </div>
+            <div class="status-item">
+              <span>Traffic Light:</span>
+              <span class="status-val" id="sub-signal" style="color: #64748b;">Standby</span>
+            </div>
+            <div class="status-item">
+              <span>Pedestrians:</span>
+              <span class="status-val" id="sub-ped" style="color: #059669;">0 Sidewalk (Safe)</span>
+            </div>
+            <div class="status-item">
+              <span>Environment:</span>
+              <span class="status-val" id="sub-env" style="color: #059669;">Clear</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="toast-container" aria-live="polite"></div>
+
+  <!-- Modular ES6 JavaScript Entry Point -->
+  <script type="module" src="/static/js/main.js"></script>
+</body>
+</html>

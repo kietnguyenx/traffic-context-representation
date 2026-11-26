@@ -1,0 +1,14 @@
+==============================================================
+📊 KẾT QUẢ CHÍNH THỨC TRÊN TẬP VAL (STANDARD imgsz=800):
+  • Precision : 74.10%
+  • Recall    : 59.37%
+  • mAP@50    : 65.84%
+  • mAP@50-95 : 32.72%
+--------------------------------------------------------------
+🏆 KẾT QUẢ MAX-PING VỚI TTA (augment=True, imgsz=800):
+  • Precision : 71.95%
+  • Recall    : 58.35%
+  • mAP@50    : 65.05%
+  • mAP@50-95 : 32.54%
+  • File size : 51.11 MB (/kaggle/working/FINAL_EXPORT/yolo_best.pt)
+==============================================================

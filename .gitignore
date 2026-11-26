@@ -10,7 +10,9 @@ data/
 *.pt
 *.pth
 *.onnx
-weights/
+weights/*
+!weights/README.md
+!weights/.gitkeep
 runs/
 logs/
 *.cache
@@ -21,3 +23,7 @@ __pycache__/
 .ipynb_checkpoints/
 .venv/
 venv/
+
+# IDE & Local Notes
+.vscode/
+TODO_AUDIT_FIXES.md

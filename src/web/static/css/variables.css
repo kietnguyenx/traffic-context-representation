@@ -1,0 +1,58 @@
+/* ==========================================================================
+ * DESIGN TOKENS — ULTRA-CLEAN WHITE ENTERPRISE ADAS DASHBOARD
+ * Giữ nguyên 100% bảng màu, bo góc và typography của bản thiết kế gốc.
+ * ========================================================================== */
+
+:root {
+  /* Backgrounds & Surfaces */
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f8fafc;
+  --bg-hover-blue: #eff6ff;
+  --bg-danger-soft: #fef2f2;
+  --bg-success-soft: #ecfdf5;
+  --bg-video: #090d16;
+
+  /* Borders */
+  --border-default: #e2e8f0;
+  --border-subtle: #f1f5f9;
+  --border-dashed: #cbd5e1;
+  --border-blue: #bfdbfe;
+  --border-success: #a7f3d0;
+  --border-danger: #fecaca;
+  --border-danger-strong: #fca5a5;
+
+  /* Text */
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --text-subtle: #475569;
+  --text-line-num: #94a3b8;
+
+  /* Semantic Accents */
+  --accent-blue: #2563eb;
+  --accent-blue-hover: #1d4ed8;
+  --accent-cyan: #0284c7;
+  --accent-green: #10b981;
+  --accent-green-dark: #059669;
+  --accent-amber: #f59e0b;
+  --accent-amber-dark: #d97706;
+  --accent-red: #dc2626;
+  --accent-red-soft: #ef4444;
+  --accent-red-dark: #991b1b;
+  --accent-purple: #7c3aed;
+
+  /* Typography */
+  --font-sans: 'Inter', 'Segoe UI', -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace;
+
+  /* Radii & Shadows */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
+  --radius-pill: 999px;
+  --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.02);
+  --shadow-btn: 0 1px 3px rgba(37, 99, 235, 0.2);
+  --shadow-btn-hover: 0 4px 10px rgba(37, 99, 235, 0.28);
+}

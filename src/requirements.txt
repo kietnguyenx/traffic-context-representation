@@ -1,4 +1,7 @@
 # Web Dashboard & Interface
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
 streamlit>=1.35.0
 
 # Computer Vision & Image Processing
@@ -7,7 +10,7 @@ numpy>=1.24.0
 Pillow>=9.5.0
 matplotlib>=3.7.0
 
-# Deep Learning & Models (YOLOv8 + ByteTrack)
+# Deep Learning & Models (YOLOv12 + ByteTrack)
 torch>=2.0.0
 torchvision>=0.15.0
 ultralytics>=8.0.0

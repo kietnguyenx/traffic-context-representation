@@ -1,0 +1,9 @@
+Metric Category,Metric Name,Clean Mask [0.0 - 1.0],Clean (%),Noisy Mask (Ablation),Delta,Unit / Scale,Interpretation
+Spatial Perception,Drivable Area Accuracy,1.0000,100.0%,1.0000,0.0000,Score [0-1],5x5 window sample robustness
+Spatial Perception,Lane Position Accuracy,1.0000,100.0%,1.0000,0.0000,Score [0-1],Vanishing point & corridor alignment
+Spatial Perception,Distance Level Accuracy,0.8500,85.0%,0.8500,0.0000,Score [0-1],BBox bottom & contact point mapping
+Safety Risk Assessment,Warning Precision,1.0000,100.0%,1.0000,0.0000,Score [0-1],Zero false alarms (FP=0)
+Safety Risk Assessment,Warning Recall,1.0000,100.0%,1.0000,0.0000,Score [0-1],Zero missed hazards (FN=0)
+Safety Risk Assessment,Warning F1-Score,1.0000,100.0%,1.0000,0.0000,Score [0-1],Harmonic mean of precision & recall
+System Performance,Inference Latency,0.154,--,0.159,+0.005,ms/frame,Negligible computational overhead
+System Performance,Processing Throughput,6492.5,--,6279.2,--,FPS,Ultra real-time capability

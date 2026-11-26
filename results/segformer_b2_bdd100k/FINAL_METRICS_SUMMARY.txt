@@ -1,0 +1,15 @@
+SegFormer-B2 (MiT-B2) BDD100K Segmentation - Final Metrics Summary
+==================================================================
+Pretrained : nvidia/segformer-b2-finetuned-cityscapes-1024-1024
+Resolution : 768 x 432 (lane_dilate=2, class_weights=[1.0, 1.5, 4.0])
+Best Chunk : Chunk 19 (Epoch 3, Batch 4271)
+------------------------------------------------------------------
+Val Loss          : 0.1732
+Pixel Accuracy    : 95.81%
+mIoU (3-class)    : 73.23%
+Mean Dice         : 82.10%
+IoU Background    : 96.14%
+IoU Drivable Area : 83.33% (Dice: 90.91%)
+IoU Lane Marking  : 40.21% (Dice: 57.36%)
+Lane Precision    : 43.40%
+Lane Recall       : 84.55%

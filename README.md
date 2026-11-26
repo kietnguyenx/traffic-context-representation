@@ -13,7 +13,7 @@ Hệ thống xử lý tuần tự trên từng khung hình video theo luồng sa
 ```
 Raw Video Frame (Dashcam)
        │
-       ├──► [YOLOv8 + ByteTrack]  ────► Bounding Boxes, Class ID, Track ID
+       ├──► [YOLOv12 + ByteTrack]  ────► Bounding Boxes, Class ID, Track ID
        │
        ├──► [SegFormer]            ────► Drivable Area Mask, Lane Markings Mask
        │
@@ -24,7 +24,7 @@ Raw Video Frame (Dashcam)
 [ADAS Cockpit Visualizer]         ────► Streamlit Dashboard / Rendered MP4 Video
 ```
 
-- **Object Detection & Tracking:** YOLOv8 phát hiện 3 lớp đối tượng (`Vehicle`, `Pedestrian`, `Traffic Light`); ByteTrack duy trì định danh (ID) vật thể qua chuỗi khung hình.
+- **Object Detection & Tracking:** YOLOv12 phát hiện 3 lớp đối tượng (`Vehicle`, `Pedestrian`, `Traffic Light`); ByteTrack duy trì định danh (ID) vật thể qua chuỗi khung hình.
 - **Semantic Segmentation:** SegFormer phân đoạn điểm ảnh cho lòng đường (`Drivable Area`) và vạch phân làn (`Lane Markings`).
 - **Traffic Context Representation Engine:** Module suy luận không gian xác định vị trí làn xe, kiểm tra vùng an toàn, ước lượng khoảng cách tương đối, tính toán thời gian tới va chạm (Time-To-Collision - TTC) và kích hoạt cảnh báo nguy cơ (FCW, PCW).
 
@@ -34,25 +34,29 @@ Raw Video Frame (Dashcam)
 
 ```
 traffic-context-representation/
-├── Dockerfile                      # Cấu hình đóng gói container ứng dụng
-├── docker-compose.yml              # Cấu hình điều phối dịch vụ Docker
 ├── README.md                       # Tài liệu kỹ thuật dự án
-├── notebooks/                      # Jupyter notebooks huấn luyện và tiền xử lý
-│   ├── 01_download_raw_data.ipynb
-│   └── 02_train_yolo.ipynb
-└── src/                            # Mã nguồn chính của hệ thống
-    ├── app.py                      # Ứng dụng Web Dashboard (Streamlit)
-    ├── pipeline.py                 # Điều phối luồng nhận thức toàn diện
-    ├── context_engine.py           # Module suy luận ngữ cảnh giao thông
+├── weights/                        # Thư mục lưu trữ trọng số mô hình
+│   ├── .gitkeep                    # Giữ thư mục trên Git
+│   ├── README.md                   # Bảng thông số trọng số mô hình (Model Zoo)
+│   ├── yolo_best.pt                # Checkpoint YOLOv12 đã huấn luyện
+│   └── segformer_best.pth          # Checkpoint SegFormer đã huấn luyện
+└── src/                            # Mã nguồn chính của hệ thống (Clean Architecture)
+    ├── app.py                      # Ứng dụng Web Dashboard (Streamlit Controller)
+    ├── ui_components.py            # Thành phần giao diện HTML/JS độc lập
+    ├── pipeline.py                 # Điều phối luồng nhận thức AI đa nhiệm
+    ├── context_engine.py           # Module suy luận ngữ cảnh giao thông (Core Logic)
     ├── evaluate_context.py         # Kiểm chuẩn định lượng và thí nghiệm bóc tách (Ablation)
     ├── test_context_engine.py      # Unit test kiểm thử độc lập module ngữ cảnh
-    ├── export_demo_video.py        # Script kết xuất video MP4 gắn telemetry HUD
     ├── requirements.txt            # Danh sách thư viện phụ thuộc
     ├── context_evaluation_results.json # Kết quả kiểm chuẩn định lượng
-    ├── assets/                     # Dữ liệu hình ảnh và video kết quả
-    ├── configs/                    # Cấu hình huấn luyện mô hình (data.yaml)
+    ├── assets/                     # Định dạng phong cách giao diện
+    │   └── style.css               # Bộ stylesheet Clean Cyber-Tech (Light Luxury)
+    ├── configs/                    # Cấu hình dữ liệu (data.yaml)
     ├── datasets/                   # Scripts tiền xử lý và ánh xạ nhãn BDD100K/nuScenes
-    └── utils/                      # Tiện ích bổ trợ (sinh kịch bản, ánh xạ nhãn, vẽ)
+    └── utils/                      # Tiện ích bổ trợ
+        ├── label_mapper.py         # Chuẩn hóa nhãn lớp (Vehicle, Pedestrian, Traffic Light)
+        ├── segformer_loader.py     # Nạp trọng số SegFormer FP16 tối ưu phần cứng
+        └── visualizer.py           # Đồ họa trực quan hóa ADAS Cockpit & Spatial Graph
 ```
 
 ---
@@ -98,11 +102,8 @@ python src/evaluate_context.py
 ```
 Kết quả đo đạc được xuất ra console và lưu tại `src/context_evaluation_results.json`.
 
-### 4.4. Kết xuất Video Demo mẫu (.mp4)
-Render video ngoại tuyến kèm đầy đủ trực quan hóa ADAS HUD và lưu vào file MP4:
-```bash
-python src/export_demo_video.py --frames 120 --fps 30 --output src/assets/demo_adas_cockpit.mp4
-```
+### 4.4. Phân tích & Xuất Video Trực Tiếp
+Ứng dụng Web Dashboard tự động kết xuất video MP4 chất lượng cao đã gắn nhãn bounding box và telemetry HUD thời gian thực ngay sau khi hoàn tất quá trình phân tích video tải lên.
 
 ### 4.5. Triển khai bằng Docker
 ```bash
