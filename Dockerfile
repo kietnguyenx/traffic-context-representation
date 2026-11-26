@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 COPY . /app
 
-#Cổng mạng mà ứng dụng sẽ mở ra để Streamlit có thể truy cập từ bên ngoài container
+# Expose FastAPI + HTML/CSS/JS Web Dashboard port
 EXPOSE 8501
 
-CMD ["streamlit", "run", "src/app.py","--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["python", "src/web_server.py"]
