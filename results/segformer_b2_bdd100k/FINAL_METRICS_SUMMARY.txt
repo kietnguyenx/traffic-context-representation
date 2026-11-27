@@ -1,15 +1,17 @@
-SegFormer-B2 (MiT-B2) BDD100K Segmentation - Final Metrics Summary
 ==================================================================
-Pretrained : nvidia/segformer-b2-finetuned-cityscapes-1024-1024
-Resolution : 768 x 432 (lane_dilate=2, class_weights=[1.0, 1.5, 4.0])
-Best Chunk : Chunk 19 (Epoch 3, Batch 4271)
+📊 SEGFORMER-B2 STAGE-2 MAX-PING (896x504, Lovasz+Dice+CE+EMA):
+  • Pixel Accuracy  : 96.29%
+  • mIoU (3-class)  : 74.22%
+  • Mean Dice       : 82.74%
+  • Drivable IoU    : 85.27% (Dice: 92.05%)
+  • Lane IoU        : 40.73% (Dice: 57.89%)
+  • Lane Prec / Rec : 43.60% / 86.09%
 ------------------------------------------------------------------
-Val Loss          : 0.1732
-Pixel Accuracy    : 95.81%
-mIoU (3-class)    : 73.23%
-Mean Dice         : 82.10%
-IoU Background    : 96.14%
-IoU Drivable Area : 83.33% (Dice: 90.91%)
-IoU Lane Marking  : 40.21% (Dice: 57.36%)
-Lane Precision    : 43.40%
-Lane Recall       : 84.55%
+🏆 SEGFORMER-B2 STAGE-2 + FLIP-TTA (Chấm điểm cực hạn):
+  • Pixel Accuracy  : 96.34%
+  • mIoU (3-class)  : 74.37%
+  • Mean Dice       : 82.86%
+  • Drivable IoU    : 85.50% (Dice: 92.18%)
+  • Lane IoU        : 40.91% (Dice: 58.06%)
+  • File size       : 104.48 MB (/kaggle/working/FINAL_EXPORT/segformer_best.pth)
+==================================================================

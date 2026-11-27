@@ -14,22 +14,20 @@ import numpy as np
 
 class ADASVisualizer:
     """
-    Bộ trực quan hóa đồ họa buồng lái ADAS chuẩn Quốc tế (SAE J2395 / ISO 15005 / Tesla FSD Paradigm).
-    Chuẩn hóa hệ thống thị giác về đúng 4 cấp độ màu ngữ nghĩa (4-Color Semantic Hierarchy)
-    chống quá tải nhận thức (Cognitive Overload) và tối ưu hiệu năng Zero-Allocation Buffer Caching:
+    Bộ trực quan hóa ngữ cảnh giao thông (Traffic Context HUD) theo 4 cấp độ màu ngữ nghĩa:
     1. Emerald Green : Vùng mặt đường an toàn (Drivable Area) & Tín hiệu đèn Xanh
     2. Nominal Cyan  : Phương tiện theo dõi an toàn (Safe Tracked) & Vạch phân làn bán trong suốt
-    3. Advisory Amber: Cảnh báo cấp 1 (Cut-in tạt đầu / Giảm khoảng cách / Đèn Vàng)
-    4. Crimson Red   : Báo động cấp 2 khẩn cấp (Phanh AEB / Người đi bộ dưới lòng đường / Đèn Đỏ)
+    3. Advisory Amber: Cảnh báo cấp 1 (Chuyển làn / Giảm khoảng cách / Đèn Vàng)
+    4. Crimson Red   : Cảnh báo cấp 2 nguy hiểm cao (FCW / Người đi bộ dưới lòng đường / Đèn Đỏ)
     """
 
-    # Bảng 4 màu chuẩn Quốc tế SAE J2395 (Hệ màu BGR cho OpenCV)
+    # Bảng 4 màu ngữ nghĩa (Hệ màu BGR cho OpenCV)
     COLOR_GREEN_DRIVABLE = (95, 205, 46)    # Emerald Green cho mặt đường
     COLOR_GREEN_SIGNAL   = (60, 220, 40)    # Xanh lá tín hiệu đèn
     COLOR_CYAN_NOMINAL   = (245, 220, 0)    # Cyan chuẩn cho đối tượng an toàn
     COLOR_CYAN_LANE      = (255, 238, 95)   # Ice-Cyan dịu cho vạch kẻ làn bán trong suốt
-    COLOR_AMBER_CAUTION  = (0, 165, 255)    # Cam Hổ Phách duy nhất cho mọi cảnh báo chú ý / Cut-in
-    COLOR_RED_DANGER     = (35, 25, 255)    # Đỏ Crimson duy nhất cho phanh khẩn cấp AEB / Nguy hiểm
+    COLOR_AMBER_CAUTION  = (0, 165, 255)    # Cam Hổ Phách cho cảnh báo chú ý / chuyển làn
+    COLOR_RED_DANGER     = (35, 25, 255)    # Đỏ Crimson cho cảnh báo nguy hiểm cao (FCW / PCW)
 
     def __init__(self):
         self._buffer_shape = None
@@ -238,9 +236,9 @@ class ADASVisualizer:
                         dist_en = "Mid"
 
                     if is_emergency_obj:
-                        label = f"[AEB BRAKE #{obj['id']} | {short_lane} | Dist: {dist_en}]"
+                        label = f"[CRITICAL #{obj['id']} | {short_lane} | Dist: {dist_en}]"
                     elif is_cut_in_obj:
-                        label = f"[CUT-IN #{obj['id']} | {short_lane} | Dist: {dist_en}]"
+                        label = f"[LANE CHANGE #{obj['id']} | {short_lane} | Dist: {dist_en}]"
                     elif cls_name == "Vehicle":
                         # Nếu khung hình đông xe và xe ở xa an toàn, rút gọn nhãn để không che bầu trời
                         if many_objects and dist_en == "Far" and not is_caution_obj and not is_lead:

@@ -53,7 +53,7 @@ export function renderCockpitTelemetry({
 
   // 2. Lead Vehicle Gap
   dom.lblLead.textContent = is_trip_summary ? "MIN LEAD GAP" : "LEAD VEHICLE GAP";
-  const tagLeadText = cut_in_alert ? "⚠️ CUT-IN!" : lead_id != null ? "#1 EGO LANE" : "CLEAR";
+  const tagLeadText = cut_in_alert ? "⚠️ LANE CHANGE" : lead_id != null ? "#1 EGO LANE" : "CLEAR";
   const tagLeadColor = cut_in_alert ? "#dc2626" : "#0284c7";
   dom.tagLead.textContent = tagLeadText;
   dom.tagLead.style.color = tagLeadColor;
@@ -120,7 +120,7 @@ export function renderCockpitTelemetry({
     const rUpper = String(risk).toUpperCase();
     if (["EMERGENCY", "AEB", "KHAN CAP", "PHANH"].some((k) => rUpper.includes(k))) {
       riskColor = "#dc2626";
-      riskBadge = "🚨 AEB ACTIVE";
+      riskBadge = "🚨 CRITICAL ALERT";
       riskBarColor = "#dc2626";
       riskPct = 100;
     } else if (["CAUTION", "CHU Y", "WARN", "WARNING"].includes(rUpper)) {

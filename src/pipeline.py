@@ -183,23 +183,29 @@ class DrivingPerceptionPipeline:
             try:
                 h_orig, w_orig = frame.shape[:2]
                 
-                # Tối ưu hóa cho mọi video 4K/FullHD: Lưới 640x384 (16:9 chuẩn chia hết cho 32, bắt trọn cả xe ở xa)
-                f_det = cv2.resize(frame, (640, 384), interpolation=cv2.INTER_LINEAR)
-                scale_x = w_orig / 640.0
-                scale_y = h_orig / 384.0
+                # Tối ưu hóa cho mọi video 4K/FullHD: Lưới 800x480 (16:9 chia hết cho 32, khớp chuẩn train 800px + FP16 giữ nguyên FPS)
+                det_w, det_h = 800, 480
+                f_det = cv2.resize(frame, (det_w, det_h), interpolation=cv2.INTER_LINEAR)
+                scale_x = w_orig / float(det_w)
+                scale_y = h_orig / float(det_h)
+                use_half = (self.device_target == "cuda")
 
                 results = self.yolo_model.track(
                     f_det,
                     persist=True,
                     tracker="bytetrack.yaml",
-                    conf=0.38,
-                    imgsz=(384, 640),
+                    conf=0.25,
+                    iou=0.55,
+                    agnostic_nms=True,
+                    half=use_half,
+                    imgsz=(det_h, det_w),
                     verbose=False,
                     device=self.device_target
                 )[0]
                 if results.boxes is not None and len(results.boxes) > 0:
                     boxes = results.boxes.xyxy.cpu().numpy()
                     classes = results.boxes.cls.int().cpu().numpy()
+                    confs = results.boxes.conf.cpu().numpy()
                     names = results.names
                     track_ids = (
                         results.boxes.id.int().cpu().numpy()
@@ -207,7 +213,7 @@ class DrivingPerceptionPipeline:
                         else np.arange(len(boxes))
                     )
 
-                    for box, track_id, cls_id in zip(boxes, track_ids, classes):
+                    for box, track_id, cls_id, conf_val in zip(boxes, track_ids, classes, confs):
                         raw_class_name = str(names.get(cls_id, cls_id))
                         raw_lower = raw_class_name.lower()
                         
@@ -217,7 +223,7 @@ class DrivingPerceptionPipeline:
                             mapped_class = "Pedestrian"
                         elif any(k in raw_lower for k in ["traffic light", "traffic_light", "light", "signal"]):
                             mapped_class = "Traffic Light"
-                        elif any(k in raw_lower for k in ["car", "bus", "truck", "van", "motorcycle", "vehicle"]):
+                        elif any(k in raw_lower for k in ["car", "bus", "truck", "van", "motorcycle", "motor", "vehicle"]):
                             mapped_class = "Vehicle"
                         elif cls_id == 0:
                             mapped_class = "Vehicle"
@@ -225,6 +231,11 @@ class DrivingPerceptionPipeline:
                             mapped_class = "Pedestrian"
                         elif cls_id == 2:
                             mapped_class = "Traffic Light"
+
+                        # Ngưỡng tin cậy thích ứng theo lớp (bắt nhạy xe máy, xe ở xa và đèn nhỏ mà không nhiễu)
+                        min_conf = 0.28 if mapped_class == "Vehicle" else (0.26 if mapped_class == "Pedestrian" else 0.25)
+                        if float(conf_val) < min_conf:
+                            continue
 
                         # Khôi phục tọa độ chính xác về độ phân giải gốc của video
                         bx1 = int(box[0] * scale_x)

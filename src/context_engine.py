@@ -11,15 +11,12 @@ import cv2
 
 class VehicleTrajectoryTracker:
     """
-    Bộ theo dõi và dự báo quỹ đạo không-thời gian (Spatio-Temporal Trajectory Tracker)
-    Tích hợp:
-    - Quản lý bộ đệm lịch sử tọa độ (FIFO Buffer, tối đa 25 khung hình)
-    - Khử rung lắc BBox bằng bộ lọc mượt hàm mũ (Exponential Moving Average - EMA)
-    - Ước lượng vectơ vận tốc di chuyển ngang vx và dọc vy (pixel/giây)
-    - Phân tích trạng thái động học (Phanh gấp, Tăng tốc, Chuyển làn, Tốc độ đều)
-    - Ngoại suy quỹ đạo tương lai (Forward Trajectory Projection cho 0.4s, 0.8s, 1.2s)
-    - Bắt sớm tình huống xe tạt đầu (Predictive Cut-in Hazard)
-    - Tự động dọn dẹp các ID xe đã rời khỏi màn hình (Garbage Collection)
+    Bộ theo dõi chuyển động không-thời gian (Spatio-Temporal Tracker)
+    - Quản lý lịch sử tọa độ (FIFO Buffer, tối đa 25 khung hình)
+    - Khử rung lắc BBox bằng bộ lọc mượt hàm mũ (EMA)
+    - Ước lượng vận tốc tương đối vx, vy (pixel/giây) và trạng thái chuyển động
+    - Phát hiện xe chuyển từ làn bên vào làn chính (Lane Change Detection)
+    - Tự động dọn dẹp các ID xe đã rời khỏi khung hình
     """
 
     def __init__(self, fps=30, max_history=25):
@@ -114,53 +111,20 @@ class VehicleTrajectoryTracker:
             motion_state = "Tốc độ ổn định (Cruising)"
         t_data["motion_state"] = motion_state
 
-        # 3. Dự phóng quỹ đạo tương lai (Forward Trajectory Projection)
-        predicted_points = []
-        for tau in [0.4, 0.8, 1.2]:
-            future_x = int(x_curr + vx * tau)
-            future_y = int(y_curr + vy * tau)
-            future_x = max(0, min(w_f - 1, future_x))
-            future_y = max(0, min(h_f - 1, future_y))
-            predicted_points.append((future_x, future_y))
-
-        # 4. Dự báo tạt đầu thông minh (Predictive Cut-in Hazard)
+        # 3. Phát hiện chuyển làn trực tiếp vào làn chính (Lane Change Detection)
         is_cut_in = False
         cut_in_reason = ""
         prev_lane = t_data.get("last_lane", lane_pos)
-
-        # Trường hợp A: Xe từ làn bên (Làn trái/phải) vừa chuyển sang Cùng làn
         if ("lan trai" in prev_lane.lower() or "lan phai" in prev_lane.lower()) and ("cung lan" in lane_pos.lower()):
             if distance in ["Gan", "Vua"]:
                 is_cut_in = True
-                cut_in_reason = f"Xe #{track_id} tạt từ {prev_lane} vào làn chính"
-
-        # Trường hợp B: Xe đang ở Làn trái nhưng có vectơ vận tốc vx dương mạnh hướng về tâm làn
-        elif "lan trai" in lane_pos.lower() and (vx > w_f * 0.035) and distance in ["Gan", "Vua"]:
-            if any(px > int(w_f * 0.38) for px, _ in predicted_points):
-                is_cut_in = True
-                cut_in_reason = f"Xe #{track_id} dự báo cắt mặt từ bên trái (vx={vx:+.0f}px/s)"
-
-        # Trường hợp C: Xe đang ở Làn phải nhưng có vectơ vận tốc vx âm mạnh hướng về tâm làn
-        elif "lan phai" in lane_pos.lower() and (vx < -w_f * 0.035) and distance in ["Gan", "Vua"]:
-            if any(px < int(w_f * 0.62) for px, _ in predicted_points):
-                is_cut_in = True
-                cut_in_reason = f"Xe #{track_id} dự báo cắt mặt từ bên phải (vx={vx:+.0f}px/s)"
-
-        # Trường hợp D: Fallback tương thích ngưỡng delta_f ngắn
-        if not is_cut_in and delta_f <= 5:
-            dx_per_frame = (x_curr - prev_x) / delta_f
-            if "lan trai" in prev_lane.lower() and dx_per_frame > (w_f * 0.015) and distance == "Gan":
-                is_cut_in = True
-                cut_in_reason = f"Xe #{track_id} cắt mặt từ bên trái sang"
-            elif "lan phai" in prev_lane.lower() and dx_per_frame < -(w_f * 0.015) and distance == "Gan":
-                is_cut_in = True
-                cut_in_reason = f"Xe #{track_id} cắt mặt từ bên phải sang"
+                cut_in_reason = f"Xe #{track_id} chuyển từ {prev_lane} vào làn chính"
 
         t_data["last_lane"] = lane_pos
         t_data["is_cut_in"] = is_cut_in
         t_data["cut_in_reason"] = cut_in_reason
 
-        # 5. Làm mượt chỉ số TTC (Smoothed TTC)
+        # 4. Làm mượt chỉ số TTC tương đối (Smoothed Relative TTC)
         smoothed_ttc = float('inf')
         if len(history) >= 2 and area > history[0][2]:
             old_pt = history[-min(len(history), 4)]
@@ -180,7 +144,7 @@ class VehicleTrajectoryTracker:
 
         return {
             "trajectory": trajectory_pts,
-            "predicted_trajectory": predicted_points,
+            "predicted_trajectory": [],
             "velocity": {"vx": round(vx, 1), "vy": round(vy, 1), "speed": round(speed, 1)},
             "motion_state": motion_state,
             "is_cut_in": is_cut_in,
@@ -306,22 +270,18 @@ class TrafficContextEngine:
         else:
             weather_final = user_weather
 
-        # 4. Thích ứng hệ số ma sát và ngưỡng an toàn ADAS (Adaptive Braking Margin)
+        # 4. Điều chỉnh ngưỡng cảnh báo tương đối theo điều kiện thời tiết
         wf_lower = weather_final.lower()
         if any(k in wf_lower for k in ["mua", "bao", "rain", "storm", "uon"]):
-            road_friction = 0.52   # Mặt đường ướt trơn trượt
-            ttc_threshold = 3.2    # Cảnh báo phanh trước 3.2 giây
-            weather_advisory = "Đường ướt trơn trượt do mưa bão - Tăng cự ly an toàn"
+            ttc_threshold = 3.2
+            weather_advisory = "Thời tiết mưa / đường ướt - Tăng khoảng cách an toàn"
         elif any(k in wf_lower for k in ["suong", "fog", "cam mo", "mo"]):
-            road_friction = 0.70
             ttc_threshold = 2.9
-            weather_advisory = "Tầm nhìn hạn chế do sương mù/kính mờ - Đề nghị giảm tốc"
+            weather_advisory = "Tầm nhìn hạn chế do sương mù/kính mờ - Giảm tốc độ"
         elif any(k in wf_lower for k in ["dem", "night", "toi"]):
-            road_friction = 0.80
             ttc_threshold = 2.4
-            weather_advisory = "Thiếu sáng ban đêm - Tăng cường quan sát người đi bộ"
+            weather_advisory = "Thiếu sáng ban đêm - Tăng cường quan sát"
         else:
-            road_friction = 0.85   # Mặt đường khô ráo tiêu chuẩn
             ttc_threshold = 1.8
             weather_advisory = "Điều kiện thời tiết bình thường"
 
@@ -332,7 +292,6 @@ class TrafficContextEngine:
             "blur_variance": round(blur_var, 1),
             "lighting": lighting_status,
             "brightness": round(mean_bright, 1),
-            "road_friction": road_friction,
             "ttc_threshold": ttc_threshold,
             "advisory": weather_advisory
         }
@@ -595,23 +554,22 @@ class TrafficContextEngine:
 
     def process_frame(self, detections, masks=None, weather_label="Nang rao", frame_idx=0, frame_shape=(384, 640), raw_frame=None):
         """
-        Xử lý toàn bộ đối tượng, mặt nạ và khung hình thực tế để suy luận ngữ cảnh hoàn chỉnh:
-        - Tự động đánh giá Môi trường & Chất lượng Camera (độ mờ giọt nước, ban đêm, sương mù).
-        - Phát hiện hành vi xe tạt đầu nguy hiểm (Cut-in Hazard).
+        Hợp nhất đối tượng phát hiện (YOLO) và mặt nạ phân đoạn (SegFormer) để biểu diễn ngữ cảnh giao thông:
+        - Nhận diện điều kiện thời tiết & ánh sáng.
+        - Xác định vị trí làn đường, lòng đường và khoảng cách tương đối.
         - Phân tích màu đèn tín hiệu giao thông (Đỏ, Vàng, Xanh).
-        - Kích hoạt cơ chế Phanh Khẩn Cấp (AEB - Autonomous Emergency Braking) khi gặp chướng ngại vật/tai nạn.
+        - Phát cảnh báo va chạm phía trước (FCW) và người đi bộ trên lòng đường (PCW).
         """
         h, w = frame_shape[:2]
         masks = masks or {}
         drivable_mask = masks.get('drivable', None)
         lane_mask = masks.get('lane', None)
 
-        # 1. Đánh giá Môi trường quang học & Camera (Cache siêu tốc)
+        # 1. Đánh giá Thời tiết & Ánh sáng từ khung hình
         env_info = self.assess_environment_and_camera(frame=raw_frame, user_weather=weather_label, frame_idx=frame_idx)
         active_weather = env_info["weather"]
         ttc_threshold = env_info["ttc_threshold"]
         camera_status = env_info["camera_status"]
-        road_friction = env_info["road_friction"]
 
         context_data = {
             "frame": frame_idx,
@@ -621,8 +579,7 @@ class TrafficContextEngine:
                 "camera_status": camera_status,
                 "blur_variance": env_info["blur_variance"],
                 "lighting": env_info["lighting"],
-                "road_friction": road_friction,
-                "safety_margin": f"Ngưỡng TTC {ttc_threshold}s (Hệ số bám {road_friction})"
+                "safety_margin": f"Ngưỡng TTC tương đối {ttc_threshold}s"
             },
             "summary": {
                 "total_vehicles": 0,
@@ -645,9 +602,9 @@ class TrafficContextEngine:
             context_data["warnings"].append(
                 f"📹 CẢNH BÁO TẦM NHÌN: Ống kính camera {camera_status.lower()} - Đề nghị quan sát cẩn trọng!"
             )
-        if road_friction < 0.65:
+        if any(k in active_weather.lower() for k in ["mưa", "mua", "rain"]):
             context_data["warnings"].append(
-                f"🌧️ CẢNH BÁO MẶT ĐƯỜNG: {env_info['advisory']}"
+                f"🌧️ CẢNH BÁO THỜI TIẾT: {env_info['advisory']}"
             )
 
         vehicles_count = 0
@@ -723,15 +680,15 @@ class TrafficContextEngine:
                     risk_level = "Cao"
                     context_data["warnings"].append(f"⚠️ CẢNH BÁO XE TẠT ĐẦU: {cut_in_msg}!")
 
-                # Phân cấp rủi ro & Dừng xe khẩn cấp (AEB chuẩn ISO 22839: chỉ kích hoạt ở cự ly Gần hoặc Vừa sát đầu xe)
+                # Phân cấp rủi ro va chạm phía trước (FCW) ở cự ly Gần hoặc Vừa sát đầu xe
                 if is_in_road and is_same_lane:
                     is_close_range = (distance == "Gan") or (distance == "Vua" and y2 > h * 0.62)
                     if (is_close_range and ttc != float('inf') and ttc < 1.3) or (distance == "Gan" and ttc != float('inf') and ttc < 1.6) or (y2 > h * 0.82):
                         risk_level = "Khan cap"
-                        emergency_reasons.append(f"Xe #{obj_id} cùng làn phanh gấp nguy cấp (TTC: {ttc:.1f}s)")
+                        emergency_reasons.append(f"Xe #{obj_id} cùng làn ở cự ly rất gần (TTC: {ttc:.1f}s)")
                         ttc_str = f"{ttc:.1f}s" if ttc != float('inf') else "K/c Gan"
                         context_data["warnings"].append(
-                            f"CẢNH BÁO VA CHẠM (FCW / AEB): Xe #{obj_id} nguy cơ cao (TTC: {ttc_str}, Làn: {lane_pos})"
+                            f"CẢNH BÁO VA CHẠM MỨC CAO (FCW): Xe #{obj_id} nguy cơ cao (TTC: {ttc_str}, Làn: {lane_pos})"
                         )
                     elif distance == "Gan" or (distance == "Vua" and ttc != float('inf') and ttc < ttc_threshold):
                         risk_level = "Cao"
@@ -748,7 +705,7 @@ class TrafficContextEngine:
                         risk_level = "Trung binh"
 
             # -------------------------------------------------------------
-            # 2. Logic cho NGƯỜI ĐI BỘ (Pedestrian) & Dừng Khẩn Cấp (PCW/AEB)
+            # 2. Logic cho NGƯỜI ĐI BỘ (Pedestrian - PCW)
             # -------------------------------------------------------------
             elif obj_class == "Pedestrian":
                 pedestrians_count += 1
@@ -756,9 +713,9 @@ class TrafficContextEngine:
                     pedestrians_on_road += 1
                     if distance == "Gan" or y2 > h * 0.65:
                         risk_level = "Khan cap"
-                        emergency_reasons.append(f"Người đi bộ #{obj_id} băng qua lòng đường ở cự ly GẦN")
+                        emergency_reasons.append(f"Người đi bộ #{obj_id} trên lòng đường ở cự ly GẦN")
                         context_data["warnings"].append(
-                            f"NGUY HIỂM (PCW / AEB): Người đi bộ trên lòng đường! (ID #{obj_id}, K/c: {distance})"
+                            f"NGUY HIỂM MỨC CAO (PCW): Người đi bộ trên lòng đường! (ID #{obj_id}, K/c: {distance})"
                         )
                     else:
                         risk_level = "Cao"
@@ -828,13 +785,13 @@ class TrafficContextEngine:
             })
 
         # -------------------------------------------------------------
-        # 4. ĐÁNH GIÁ TỔNG THỂ RỦI RO & PHANH KHẨN CẤP (AEB TRIGGER)
+        # 4. ĐÁNH GIÁ TỔNG THỂ MỨC ĐỘ RỦI RO (RISK LEVEL)
         # -------------------------------------------------------------
         if len(emergency_reasons) > 0:
             final_risk = "DANGER"
             context_data["summary"]["emergency_brake"] = True
             context_data["warnings"].insert(
-                0, f"🚨 PHANH KHẨN CẤP (AEB ACTIVE): {'; '.join(emergency_reasons[:2])} - DỪNG XE TỨC THÌ!"
+                0, f"🚨 CẢNH BÁO NGUY HIỂM CẤP ĐỘ CAO: {'; '.join(emergency_reasons[:2])}!"
             )
         elif any(o["risk_level"] in ["Cao", "Khan cap"] for o in context_data["objects"]) or cut_in_any:
             final_risk = "CAUTION"

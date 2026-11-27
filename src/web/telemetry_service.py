@@ -63,8 +63,8 @@ def _translate_distance(raw: str) -> str:
 
 def _translate_risk(raw: str) -> str:
     s = str(raw or "").lower()
-    if "khan cap" in s or "emergency" in s:
-        return "Emergency (AEB)"
+    if "khan cap" in s or "emergency" in s or "critical" in s:
+        return "Critical"
     if s == "cao" or "high" in s:
         return "High"
     if "trung binh" in s or "medium" in s or "caution" in s:
@@ -94,7 +94,6 @@ def format_context_log_en(raw_log: Dict[str, Any]) -> Dict[str, Any]:
     env = raw_log.get("environment", {})
     raw_margin = str(env.get("safety_margin", ""))
     ttc_m = re.search(r"(\d+(?:\.\d+)?)s", raw_margin)
-    fric = env.get("road_friction", 0.85)
     ttc_thr_str = f"{ttc_m.group(1)}s" if ttc_m else "1.8s"
 
     weather_en = _translate_weather(env.get("weather", raw_log.get("weather", "Clear")))
@@ -113,11 +112,11 @@ def format_context_log_en(raw_log: Dict[str, Any]) -> Dict[str, Any]:
 
         desc_parts = [f"[{obj.get('class', 'Object')} #{obj.get('id', 0)}]", f"Lane: {lane_en}", f"Dist: {dist_en}"]
         if obj.get("is_cut_in"):
-            desc_parts.append("CUT-IN!")
+            desc_parts.append("Lane Entering")
         if obj.get("in_drivable"):
             desc_parts.append("On Road: Yes")
         if obj.get("ttc") is not None:
-            desc_parts.append(f"TTC: {obj['ttc']}s")
+            desc_parts.append(f"Rel. TTC: {obj['ttc']}s")
         desc_parts.append(f"Risk: {risk_en}")
 
         en_objects.append({
@@ -127,11 +126,10 @@ def format_context_log_en(raw_log: Dict[str, Any]) -> Dict[str, Any]:
             "lane_position": lane_en,
             "distance": dist_en,
             "in_drivable": bool(obj.get("in_drivable", False)),
-            "is_cut_in": bool(obj.get("is_cut_in", False)),
+            "lane_entering": bool(obj.get("is_cut_in", False)),
             "traffic_light_color": obj.get("traffic_light_color"),
-            "ttc": obj.get("ttc"),
+            "relative_ttc": obj.get("ttc"),
             "risk_level": risk_en,
-            "velocity": obj.get("velocity"),
             "motion_state": motion_en,
             "description": " | ".join(desc_parts),
         })
@@ -139,9 +137,9 @@ def format_context_log_en(raw_log: Dict[str, Any]) -> Dict[str, Any]:
     # Chuẩn hóa danh sách warnings sang tiếng Anh
     en_warnings = []
     if raw_sum.get("emergency_brake"):
-        en_warnings.append("🚨 EMERGENCY BRAKE (AEB ACTIVE): Imminent collision hazard detected - STOP IMMEDIATELY!")
+        en_warnings.append("🚨 CRITICAL COLLISION ALERT (FCW): Imminent forward collision hazard detected!")
     if raw_sum.get("cut_in_detected"):
-        en_warnings.append("⚠️ CUT-IN ALERT: Adjacent vehicle cutting into ego lane!")
+        en_warnings.append("⚠️ LANE CHANGE CAUTION: Adjacent vehicle entering ego lane!")
     if raw_sum.get("pedestrians_on_road", 0) > 0:
         en_warnings.append(f"⚠️ PEDESTRIAN HAZARD (PCW): {raw_sum['pedestrians_on_road']} pedestrian(s) detected on drivable road!")
     tl_col = raw_sum.get("traffic_light_color", "None")
@@ -153,8 +151,8 @@ def format_context_log_en(raw_log: Dict[str, Any]) -> Dict[str, Any]:
         en_warnings.append("🟢 GREEN SIGNAL: Clear passage ahead.")
     if "Blurred" in cam_en:
         en_warnings.append("📹 VISIBILITY WARNING: Camera lens blurred or obstructed.")
-    if float(fric) < 0.65:
-        en_warnings.append("🌧️ ROAD SURFACE WARNING: Low tire friction detected, extended safety margin active.")
+    if any(k in weather_en.lower() for k in ["rain", "storm", "wet"]):
+        en_warnings.append("🌧️ WEATHER ADVISORY: Reduced visibility / wet road conditions, maintain extra headway.")
 
     return {
         "frame": raw_log.get("frame", 0),
@@ -162,10 +160,8 @@ def format_context_log_en(raw_log: Dict[str, Any]) -> Dict[str, Any]:
         "environment": {
             "weather": weather_en,
             "camera_status": cam_en,
-            "blur_variance": env.get("blur_variance", 0.0),
             "lighting": lighting_en,
-            "road_friction": fric,
-            "safety_margin": f"TTC Threshold {ttc_thr_str} (Friction {fric})",
+            "safety_margin": f"Relative TTC Threshold {ttc_thr_str}",
         },
         "summary": {
             "total_vehicles": raw_sum.get("total_vehicles", 0),
@@ -174,8 +170,8 @@ def format_context_log_en(raw_log: Dict[str, Any]) -> Dict[str, Any]:
             "traffic_light_ahead": bool(raw_sum.get("traffic_light_ahead", False)),
             "traffic_light_color": tl_col,
             "traffic_light_distance": _translate_distance(tl_dist_raw) if tl_dist_raw else None,
-            "cut_in_detected": bool(raw_sum.get("cut_in_detected", False)),
-            "emergency_brake": bool(raw_sum.get("emergency_brake", False)),
+            "lane_change_caution": bool(raw_sum.get("cut_in_detected", False)),
+            "critical_alert": bool(raw_sum.get("emergency_brake", False)),
             "risk_level": raw_sum.get("risk_level", "SAFE"),
             "active_warnings_count": len(en_warnings),
             "fps": raw_sum.get("fps", 30.0),
@@ -335,10 +331,10 @@ class TripTelemetryAccumulator:
         dens_desc = "Moderate urban traffic" if avg_v_now >= 3.0 else "Clear open roadway"
         if is_emergency:
             summary_type = "emergency"
-            lead_note = "🚨 EMERGENCY BRAKE (AEB)! Imminent forward collision hazard!"
+            lead_note = "🚨 CRITICAL COLLISION ALERT (FCW)! Imminent forward collision hazard!"
         elif cut_in_now:
             summary_type = "cut_in"
-            lead_note = "⚠️ CUT-IN WARNING: Adjacent vehicle cutting into ego lane!"
+            lead_note = "⚠️ CAUTION: Adjacent vehicle entering ego lane!"
         elif lead_veh:
             summary_type = "lead"
             lead_note = f"Tracking Lead Vehicle #{lead_id_val} in ego lane ({gap_val}m • TTC {lead_ttc_val}s)."
